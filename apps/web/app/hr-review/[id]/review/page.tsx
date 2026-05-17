@@ -388,13 +388,13 @@ function HRReviewDetail() {
             />
           )}
 
-          {/* HR Review - Current Review */}
+          {/* HR Review - Current Review or View */}
           <AppraisalReviewLayer
-            title={canEdit ? "HR Final Review" : "HR Final Review"}
+            title="HR Final Review"
             description={
               canEdit
                 ? "Review and finalize points for this appraisal cycle"
-                : "View-only record after super admin approval"
+                : "Points approved by HR"
             }
             isCurrentReview={canEdit}
             items={appraisal.items.map((it: any) => ({
@@ -402,16 +402,17 @@ function HRReviewDetail() {
               heading: it.heading ?? it.key,
               approvedPoints: canEdit
                 ? itemState[it.id]?.approvedPoints ?? 0
-                : it.committeeApprovedPoints ??
+                : (it.hrApprovedPoints ??
+                  it.committeeApprovedPoints ??
                   it.hodApprovedPoints ??
-                  it.facultyPoints,
+                  it.facultyPoints),
               previousPoints:
                 it.committeeApprovedPoints ??
                 it.hodApprovedPoints ??
                 it.facultyPoints,
               remark: canEdit
                 ? itemState[it.id]?.remark || ""
-                : it.committeeRemark || "",
+                : it.hrRemark || it.committeeRemark || "",
               reviewer: "HR",
             }))}
             itemInputs={
@@ -431,6 +432,31 @@ function HRReviewDetail() {
                 : undefined
             }
           />
+
+          {/* Super Admin Approval — shown after FULLY_APPROVED */}
+          {appraisal.superAdminApprovedPercent != null && (
+            <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-text">
+                Super Admin Approval
+              </h3>
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                <div>
+                  <p className="text-text-3">Approved Increment</p>
+                  <p className="font-semibold text-success text-base">
+                    {appraisal.superAdminApprovedPercent.toFixed(1)}%
+                  </p>
+                </div>
+                {appraisal.superAdminRemark && (
+                  <div>
+                    <p className="text-text-3">Remark</p>
+                    <p className="font-medium text-text">
+                      {appraisal.superAdminRemark}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -447,6 +473,7 @@ function HRReviewDetail() {
         </div>
         {canEdit ? (
           <button
+            type="button"
             onClick={submit}
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-2 font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"

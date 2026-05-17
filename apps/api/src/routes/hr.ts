@@ -203,7 +203,7 @@ router.get(
           cycle: {
             select: { id: true, name: true, startDate: true, endDate: true },
           },
-          items: { select: { id: true, key: true, points: true, notes: true } },
+          items: { select: { id: true, key: true, points: true, notes: true, weight: true } },
         },
       });
 
@@ -227,6 +227,13 @@ router.get(
         const committeeReview =
           typeof parsed.committeeReview === "object"
             ? (parsed.committeeReview as {
+                approvedPoints?: number;
+                remark?: string;
+              })
+            : null;
+        const hrReview =
+          typeof parsed.hrReview === "object"
+            ? (parsed.hrReview as {
                 approvedPoints?: number;
                 remark?: string;
               })
@@ -265,6 +272,14 @@ router.get(
             typeof committeeReview?.remark === "string"
               ? String(committeeReview.remark)
               : "",
+          hrApprovedPoints:
+            typeof hrReview?.approvedPoints === "number"
+              ? Number(hrReview.approvedPoints)
+              : null,
+          hrRemark:
+            typeof hrReview?.remark === "string"
+              ? String(hrReview.remark)
+              : "",
           evidence:
             typeof parsed.evidence === "object" && parsed.evidence
               ? parsed.evidence
@@ -283,6 +298,9 @@ router.get(
           cycle: appraisal.cycle,
           items,
           finalScore: appraisal.finalScore,
+          finalPercent: appraisal.finalPercent,
+          superAdminApprovedPercent: appraisal.superAdminApprovedPercent,
+          superAdminRemark: appraisal.superAdminRemark,
           committeeNotes: appraisal.committeeNotes,
         },
       });
@@ -681,6 +699,249 @@ router.put(
       });
 
       res.json({ success: true, message: "User unblocked", data: { userId } });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Departments ──────────────────────────────────────────────────────────────
+
+// List departments with HOD and member count
+router.get(
+  "/departments",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (_req: AuthenticatedRequest, res, next) => {
+    try {
+      const departments = await prisma.department.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          hodId: true,
+          hod: { select: { id: true, firstName: true, lastName: true, email: true } },
+          _count: { select: { users: true } },
+        },
+        orderBy: { name: "asc" },
+      });
+      res.json({ success: true, message: "Departments", data: departments });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const createDepartmentSchema = z.object({
+  name: z.string().min(1),
+  code: z.string().optional(),
+  hodId: z.string().optional(),
+});
+
+router.post(
+  "/departments",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const input = createDepartmentSchema.parse(req.body ?? {});
+
+      // If assigning a HOD, ensure no other dept already has them
+      if (input.hodId) {
+        const existing = await prisma.department.findFirst({
+          where: { hodId: input.hodId, deletedAt: null },
+        });
+        if (existing) {
+          res.status(400).json({
+            success: false,
+            message: "This user is already HOD of another department",
+          });
+          return;
+        }
+      }
+
+      const department = await prisma.department.create({
+        data: {
+          name: input.name,
+          code: input.code,
+          hodId: input.hodId ?? null,
+        },
+        select: { id: true, name: true, code: true, hodId: true },
+      });
+
+      await writeAuditLog({
+        actorId: req.auth?.sub || "",
+        action: "hr.department.created",
+        resource: "Department",
+        resourceId: department.id,
+        meta: { name: department.name },
+      });
+
+      res.status(201).json({ success: true, message: "Department created", data: department });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const updateDepartmentSchema = z.object({
+  name: z.string().min(1).optional(),
+  code: z.string().optional(),
+  hodId: z.string().nullable().optional(),
+});
+
+router.put(
+  "/departments/:deptId",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { deptId } = req.params;
+      const input = updateDepartmentSchema.parse(req.body ?? {});
+
+      // If changing HOD, ensure no other dept has them
+      if (input.hodId) {
+        const existing = await prisma.department.findFirst({
+          where: { hodId: input.hodId, deletedAt: null, id: { not: deptId } },
+        });
+        if (existing) {
+          res.status(400).json({
+            success: false,
+            message: "This user is already HOD of another department",
+          });
+          return;
+        }
+      }
+
+      const department = await prisma.department.update({
+        where: { id: deptId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.code !== undefined ? { code: input.code } : {}),
+          ...("hodId" in input ? { hodId: input.hodId ?? null } : {}),
+        },
+        select: { id: true, name: true, code: true, hodId: true },
+      });
+
+      await writeAuditLog({
+        actorId: req.auth?.sub || "",
+        action: "hr.department.updated",
+        resource: "Department",
+        resourceId: deptId,
+        meta: { name: department.name },
+      });
+
+      res.json({ success: true, message: "Department updated", data: department });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Cycles ────────────────────────────────────────────────────────────────────
+
+// List all cycles
+router.get(
+  "/cycles",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (_req: AuthenticatedRequest, res, next) => {
+    try {
+      const cycles = await prisma.appraisalCycle.findMany({
+        select: {
+          id: true,
+          name: true,
+          startDate: true,
+          endDate: true,
+          isActive: true,
+          _count: { select: { appraisals: true } },
+        },
+        orderBy: { startDate: "desc" },
+      });
+      res.json({ success: true, message: "Cycles", data: cycles });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const createCycleSchema = z.object({
+  name: z.string().min(1),
+  startDate: z.string(),
+  endDate: z.string(),
+  isActive: z.boolean().optional().default(false),
+});
+
+router.post(
+  "/cycles",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const input = createCycleSchema.parse(req.body ?? {});
+
+      const cycle = await prisma.appraisalCycle.create({
+        data: {
+          name: input.name,
+          startDate: new Date(input.startDate),
+          endDate: new Date(input.endDate),
+          isActive: input.isActive ?? false,
+        },
+        select: { id: true, name: true, startDate: true, endDate: true, isActive: true },
+      });
+
+      await writeAuditLog({
+        actorId: req.auth?.sub || "",
+        action: "hr.cycle.created",
+        resource: "AppraisalCycle",
+        resourceId: cycle.id,
+        meta: { name: cycle.name },
+      });
+
+      res.status(201).json({ success: true, message: "Cycle created", data: cycle });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const updateCycleSchema = z.object({
+  name: z.string().min(1).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+router.put(
+  "/cycles/:cycleId",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { cycleId } = req.params;
+      const input = updateCycleSchema.parse(req.body ?? {});
+
+      const cycle = await prisma.appraisalCycle.update({
+        where: { id: cycleId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}),
+          ...(input.endDate !== undefined ? { endDate: new Date(input.endDate) } : {}),
+          ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        },
+        select: { id: true, name: true, startDate: true, endDate: true, isActive: true },
+      });
+
+      await writeAuditLog({
+        actorId: req.auth?.sub || "",
+        action: "hr.cycle.updated",
+        resource: "AppraisalCycle",
+        resourceId: cycleId,
+        meta: { name: cycle.name, isActive: cycle.isActive },
+      });
+
+      res.json({ success: true, message: "Cycle updated", data: cycle });
     } catch (error) {
       next(error);
     }

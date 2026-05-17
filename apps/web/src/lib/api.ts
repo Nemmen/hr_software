@@ -35,6 +35,24 @@ export interface SessionUser {
   department?: { id: string; name: string } | null;
 }
 
+export interface HrDepartmentSummary {
+  id: string;
+  name: string;
+  code?: string | null;
+  hodId?: string | null;
+  hod?: { id: string; firstName: string; lastName: string; email: string } | null;
+  _count?: { users: number };
+}
+
+export interface HrCycleSummary {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  _count?: { appraisals: number };
+}
+
 export interface HrUserSummary {
   id: string;
   email: string;
@@ -460,6 +478,24 @@ export const api = {
       ),
     unblockUser: (id: string) =>
       unwrap<Record<string, unknown>>(apiClient.put(`/hr/users/${id}/unblock`)),
+    getDepartments: () =>
+      unwrap<HrDepartmentSummary[]>(apiClient.get("/hr/departments")),
+    createDepartment: (data: { name: string; code?: string; hodId?: string }) =>
+      unwrap<{ id: string; name: string }>(apiClient.post("/hr/departments", data)),
+    updateDepartment: (
+      id: string,
+      data: { name?: string; code?: string; hodId?: string | null },
+    ) =>
+      unwrap<{ id: string; name: string }>(apiClient.put(`/hr/departments/${id}`, data)),
+    getCycles: () =>
+      unwrap<HrCycleSummary[]>(apiClient.get("/hr/cycles")),
+    createCycle: (data: { name: string; startDate: string; endDate: string; isActive?: boolean }) =>
+      unwrap<HrCycleSummary>(apiClient.post("/hr/cycles", data)),
+    updateCycle: (
+      id: string,
+      data: { name?: string; startDate?: string; endDate?: string; isActive?: boolean },
+    ) =>
+      unwrap<HrCycleSummary>(apiClient.put(`/hr/cycles/${id}`, data)),
   },
   departments: {
     list: () => unwrap<DepartmentSummary[]>(apiClient.get("/departments")),

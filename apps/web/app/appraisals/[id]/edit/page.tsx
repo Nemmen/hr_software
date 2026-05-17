@@ -209,7 +209,7 @@ function AppraisalEditPage() {
   const submitAppraisal = async () => {
     await persistDraft();
     await api.appraisals.submit(appraisalId);
-    router.push("/appraisals");
+    router.push(`/appraisals/${appraisalId}`);
   };
 
   if (loading) {

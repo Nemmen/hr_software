@@ -463,6 +463,74 @@ async function getActiveCycleOrThrow() {
   return cycle;
 }
 
+// Join-date based appraisal window helpers
+// Jan-Jun joiners → form open June 1 – July 31
+// Jul-Dec joiners → form open December 1 – January 31 (next year)
+function computeAppraisalWindow(
+  dateOfJoining: Date,
+  referenceYear: number,
+): { open: Date; close: Date } {
+  const joinMonth = dateOfJoining.getMonth() + 1; // 1-12
+  if (joinMonth >= 1 && joinMonth <= 6) {
+    return {
+      open: new Date(referenceYear, 5, 1),            // June 1
+      close: new Date(referenceYear, 6, 31, 23, 59, 59), // July 31
+    };
+  }
+  return {
+    open: new Date(referenceYear, 11, 1),              // December 1
+    close: new Date(referenceYear + 1, 0, 31, 23, 59, 59), // January 31 next year
+  };
+}
+
+function checkAppraisalWindow(dateOfJoining: Date | null, today: Date): {
+  inWindow: boolean;
+  windowOpen: string | null;
+  windowClose: string | null;
+} {
+  if (!dateOfJoining) {
+    // No join date recorded — don't block access
+    return { inWindow: true, windowOpen: null, windowClose: null };
+  }
+
+  const joinMonth = dateOfJoining.getMonth() + 1;
+  const todayMonth = today.getMonth() + 1;
+  const todayYear = today.getFullYear();
+
+  if (joinMonth >= 1 && joinMonth <= 6) {
+    // Window: June–July; check this year first
+    const w = computeAppraisalWindow(dateOfJoining, todayYear);
+    if (today > w.close) {
+      // Past this year's window — report next year's window
+      const next = computeAppraisalWindow(dateOfJoining, todayYear + 1);
+      return { inWindow: false, windowOpen: next.open.toISOString(), windowClose: next.close.toISOString() };
+    }
+    return {
+      inWindow: today >= w.open,
+      windowOpen: w.open.toISOString(),
+      windowClose: w.close.toISOString(),
+    };
+  }
+
+  // Jul-Dec joiner: window December–January
+  // If we're in January, the open was last December
+  const windowYear = todayMonth === 1 ? todayYear - 1 : todayYear;
+  const w = computeAppraisalWindow(dateOfJoining, windowYear);
+  const inWindow = today >= w.open && today <= w.close;
+
+  if (!inWindow && today > w.close) {
+    // Past this window — show next December's window
+    const next = computeAppraisalWindow(dateOfJoining, todayYear);
+    return { inWindow: false, windowOpen: next.open.toISOString(), windowClose: next.close.toISOString() };
+  }
+
+  return {
+    inWindow,
+    windowOpen: w.open.toISOString(),
+    windowClose: w.close.toISOString(),
+  };
+}
+
 async function deletePreviousImage(imageUrl: string | null) {
   if (!imageUrl) {
     return;
@@ -694,7 +762,37 @@ router.get(
         return;
       }
 
-      const cycle = await getActiveCycleOrThrow();
+      // Get user's join date for window check
+      const profile = await prisma.facultyProfile.findUnique({
+        where: { userId },
+        select: { dateOfJoining: true },
+      });
+
+      const today = new Date();
+      const windowResult = checkAppraisalWindow(
+        profile?.dateOfJoining ?? null,
+        today,
+      );
+
+      // Soft-fail if no active cycle (return inWindow status anyway)
+      let cycle: { id: string; name: string; endDate: Date } | null = null;
+      try {
+        cycle = await getActiveCycleOrThrow();
+      } catch {
+        res.json({
+          success: true,
+          message: "No active cycle",
+          data: {
+            hasRequest: false,
+            cycleActive: false,
+            inWindow: windowResult.inWindow,
+            windowOpen: windowResult.windowOpen,
+            windowClose: windowResult.windowClose,
+          },
+        });
+        return;
+      }
+
       const appraisal = await prisma.appraisal.findFirst({
         where: {
           userId,
@@ -713,7 +811,14 @@ router.get(
         res.json({
           success: true,
           message: "No appraisal request yet",
-          data: { hasRequest: false },
+          data: {
+            hasRequest: false,
+            cycleActive: true,
+            cycle: { name: cycle.name, endDate: cycle.endDate.toISOString() },
+            inWindow: windowResult.inWindow,
+            windowOpen: windowResult.windowOpen,
+            windowClose: windowResult.windowClose,
+          },
         });
         return;
       }
@@ -728,6 +833,11 @@ router.get(
           submittedAt: appraisal.submittedAt?.toISOString() ?? null,
           totalPoints: appraisal.finalScore ?? null,
           incrementPercent: appraisal.finalPercent ?? null,
+          cycleActive: true,
+          cycle: { name: cycle.name, endDate: cycle.endDate.toISOString() },
+          inWindow: windowResult.inWindow,
+          windowOpen: windowResult.windowOpen,
+          windowClose: windowResult.windowClose,
         },
       });
     } catch (error) {
@@ -1006,6 +1116,27 @@ router.post(
       const user = await getProfileUser(userId);
       if (!user) {
         res.status(404).json({ success: false, message: "User not found" });
+        return;
+      }
+
+      // Enforce join-date window
+      const windowResult = checkAppraisalWindow(
+        user.facultyProfile?.dateOfJoining ?? null,
+        new Date(),
+      );
+      if (!windowResult.inWindow) {
+        const openDate = windowResult.windowOpen
+          ? new Date(windowResult.windowOpen).toLocaleDateString("en-IN", { month: "long", day: "numeric" })
+          : "the next window";
+        res.status(403).json({
+          success: false,
+          message: `Appraisal form is not open yet. Your window opens on ${openDate}.`,
+          data: {
+            inWindow: false,
+            windowOpen: windowResult.windowOpen,
+            windowClose: windowResult.windowClose,
+          },
+        });
         return;
       }
 

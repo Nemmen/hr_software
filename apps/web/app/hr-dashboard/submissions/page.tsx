@@ -209,18 +209,32 @@ function HrSubmissionsPage() {
                           Final score: {submission.finalScore?.toFixed(2) ?? 0}{" "}
                           | Selected points: {submission.totalSelectedPoints}
                         </p>
-                        <p className="mt-1 text-xs text-text-3">
-                          Salary Increase:{" "}
-                          {(
-                            submission.superAdminApprovedPercent ??
-                            submission.finalPercent ??
-                            0
-                          ).toFixed(1)}
-                          % | Updated salary: ₹
-                          {(submission.currentSalary ?? 0).toLocaleString(
-                            "en-IN",
-                          )}
-                        </p>
+                        {activeTab === "approved" ? (
+                          <p className="mt-1 text-xs text-text-3">
+                            Increment:{" "}
+                            {(
+                              submission.superAdminApprovedPercent ??
+                              submission.finalPercent ??
+                              0
+                            ).toFixed(1)}
+                            % | New salary: ₹
+                            {(submission.currentSalary ?? 0).toLocaleString(
+                              "en-IN",
+                            )}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-text-3">
+                            Projected increment:{" "}
+                            {(submission.finalPercent ?? 0).toFixed(1)}% |
+                            Projected new salary: ₹
+                            {(
+                              (submission.currentSalary ?? 0) *
+                              (1 + (submission.finalPercent ?? 0) / 100)
+                            ).toLocaleString("en-IN", {
+                              maximumFractionDigits: 0,
+                            })}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {activeTab === "review" ? (

@@ -26,8 +26,12 @@ function AppraisalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeCycleInfo, setActiveCycleInfo] = useState<{
     hasRequest: boolean;
+    cycleActive?: boolean;
     status?: string;
     cycle?: { name: string; endDate?: string };
+    inWindow?: boolean;
+    windowOpen?: string | null;
+    windowClose?: string | null;
   } | null>(null);
 
   const role = getPrimaryRole(session?.user.roles ?? []);
@@ -136,7 +140,29 @@ function AppraisalsPage() {
         }
       />
 
-      {activeCycle ? (
+      {/* Outside appraisal window — highest priority */}
+      {activeCycleInfo && activeCycleInfo.inWindow === false ? (
+        <div className="mb-6 rounded-2xl border-l-4 border-warning bg-warning-bg p-4 shadow-sm">
+          <p className="text-sm font-medium text-warning">
+            Appraisal form not open yet
+          </p>
+          <p className="mt-1 text-sm text-text-2">
+            Based on your joining date, your appraisal window opens on{" "}
+            <strong>
+              {activeCycleInfo.windowOpen
+                ? new Date(activeCycleInfo.windowOpen).toLocaleDateString(
+                    "en-IN",
+                    { month: "long", day: "numeric" },
+                  )
+                : "a future date"}
+            </strong>
+            {activeCycleInfo.windowClose
+              ? ` and closes on ${new Date(activeCycleInfo.windowClose).toLocaleDateString("en-IN", { month: "long", day: "numeric" })}`
+              : ""}
+            .
+          </p>
+        </div>
+      ) : activeCycle ? (
         <div className="mb-6 rounded-2xl border-l-4 border-brand bg-brand-light p-4 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -168,27 +194,7 @@ function AppraisalsPage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-medium text-brand">
-                Active Appraisal Cycle Open
-              </p>
-              <p className="mt-1 text-sm text-text-2">
-                Submit your appraisal to get started with the current cycle.
-              </p>
-            </div>
-            <Link
-              href="/faculty-dashboard/request-appraisal"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark"
-            >
-              Submit Appraisal
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      ) : !hasSubmittedForCurrentCycle && activeCycleInfo ? (
-        <div className="mb-6 rounded-2xl border-l-4 border-brand bg-brand-light p-4 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium text-brand">
-                Active Appraisal Cycle Open
+                Appraisal Cycle Open
               </p>
               <p className="mt-1 text-sm text-text-2">
                 Submit your appraisal to get started with the current cycle.
@@ -207,10 +213,10 @@ function AppraisalsPage() {
         <div className="mb-6 rounded-2xl border-l-4 border-success bg-success-bg p-4 shadow-sm">
           <div>
             <p className="text-sm font-medium text-success">
-              ✓ Appraisal submitted for current cycle
+              Appraisal submitted for current cycle
             </p>
             <p className="mt-1 text-sm text-text-2">
-              Thank you for submitting. Please wait for the next cycle to open.
+              Thank you for submitting. Your appraisal is now under review.
             </p>
           </div>
         </div>
