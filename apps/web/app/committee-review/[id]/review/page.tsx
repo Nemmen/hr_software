@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  CheckCircle2,
   ExternalLink,
   Loader2,
   Save,
@@ -27,6 +28,8 @@ type ReviewItem = {
   facultyPoints: number;
   hodApprovedPoints: number;
   hodRemark: string;
+  committeeApprovedPoints: number | null;
+  committeeRemark: string;
   evidence: {
     url: string;
     fileName?: string;
@@ -152,6 +155,8 @@ function buildItemPayload(
   };
 }
 
+const EDITABLE_STATUSES = ["HOD_REVIEW", "COMMITTEE_REVIEW"];
+
 function CommitteeReviewPage() {
   const params = useParams();
   const router = useRouter();
@@ -194,6 +199,10 @@ function CommitteeReviewPage() {
             typeof parsed.hodReview === "object" && parsed.hodReview
               ? (parsed.hodReview as Record<string, unknown>)
               : null;
+          const committeeReview =
+            typeof parsed.committeeReview === "object" && parsed.committeeReview
+              ? (parsed.committeeReview as Record<string, unknown>)
+              : null;
 
           return {
             id: item.id,
@@ -219,6 +228,14 @@ function CommitteeReviewPage() {
             hodRemark:
               typeof hodReview?.remark === "string"
                 ? String(hodReview.remark)
+                : "",
+            committeeApprovedPoints:
+              typeof committeeReview?.approvedPoints === "number"
+                ? Number(committeeReview.approvedPoints)
+                : null,
+            committeeRemark:
+              typeof committeeReview?.remark === "string"
+                ? String(committeeReview.remark)
                 : "",
             evidence:
               typeof parsed.evidence === "object" && parsed.evidence
@@ -247,6 +264,7 @@ function CommitteeReviewPage() {
         const initialState: Record<string, ItemState> = {};
         nextItems.forEach((item) => {
           initialState[item.id] = {
+            // In edit mode: start from HOD approved; in view mode we show committeeApprovedPoints separately
             approvedPoints: item.hodApprovedPoints,
             remark: "",
           };
@@ -276,6 +294,8 @@ function CommitteeReviewPage() {
     };
   }, [appraisalId]);
 
+  const canEdit = EDITABLE_STATUSES.includes(appraisal?.status ?? "");
+
   const totalApprovedPoints = useMemo(
     () =>
       Object.values(itemState).reduce(
@@ -283,6 +303,17 @@ function CommitteeReviewPage() {
         0,
       ),
     [itemState],
+  );
+
+  const totalCommitteeApproved = useMemo(
+    () =>
+      (appraisal?.items ?? []).reduce(
+        (sum, item) =>
+          sum +
+          (item.committeeApprovedPoints ?? item.hodApprovedPoints),
+        0,
+      ),
+    [appraisal],
   );
 
   const reviewSections = useMemo(() => {
@@ -495,6 +526,20 @@ function CommitteeReviewPage() {
         }
       />
 
+      {/* View-only banner */}
+      {!canEdit && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
+          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">Committee review submitted</p>
+            <p className="mt-0.5 text-text-2">
+              This appraisal has been forwarded to HR. You can view the
+              submitted review below (read-only).
+            </p>
+          </div>
+        </div>
+      )}
+
       {error ? (
         <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
           {error}
@@ -507,6 +552,7 @@ function CommitteeReviewPage() {
         </div>
       ) : null}
 
+      {/* Summary metrics */}
       <div className="mb-6 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
@@ -540,11 +586,12 @@ function CommitteeReviewPage() {
             Committee Approved
           </p>
           <p className="mt-2 text-2xl font-bold text-brand">
-            {totalApprovedPoints}
+            {canEdit ? totalApprovedPoints : totalCommitteeApproved}
           </p>
         </div>
       </div>
 
+      {/* Category tabs */}
       {reviewSections.length > 0 ? (
         <div className="mb-6 rounded-2xl border border-border bg-surface p-3 shadow-sm">
           <div className="flex flex-wrap gap-2">
@@ -572,7 +619,7 @@ function CommitteeReviewPage() {
                   >
                     {section.items.length}
                   </span>
-                  {savedSections[section.category] ? (
+                  {canEdit && savedSections[section.category] ? (
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                       Saved
                     </span>
@@ -584,6 +631,7 @@ function CommitteeReviewPage() {
         </div>
       ) : null}
 
+      {/* Active section items */}
       {activeSection ? (
         <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border pb-4 md:flex-row md:items-start md:justify-between">
@@ -592,7 +640,7 @@ function CommitteeReviewPage() {
                 <h3 className="font-display text-lg font-semibold text-text">
                   {CATEGORY_DETAILS[activeSection.category].title}
                 </h3>
-                {savedSections[activeSection.category] ? (
+                {canEdit && savedSections[activeSection.category] ? (
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                     Saved
                   </span>
@@ -602,28 +650,33 @@ function CommitteeReviewPage() {
                 {CATEGORY_DETAILS[activeSection.category].description}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void saveSection(activeSection.category)}
-              disabled={savingCategory === activeSection.category || saving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {savingCategory === activeSection.category ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {savingCategory === activeSection.category
-                ? `Saving ${activeSection.category}...`
-                : `Save ${activeSection.category} section`}
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => void saveSection(activeSection.category)}
+                disabled={savingCategory === activeSection.category || saving}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingCategory === activeSection.category ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {savingCategory === activeSection.category
+                  ? `Saving ${activeSection.category}...`
+                  : `Save ${activeSection.category} section`}
+              </button>
+            )}
           </div>
 
           <div className="mt-5 space-y-4">
             {activeSection.items.map((item) => {
-              const approved = Number(
+              const editApproved = Number(
                 itemState[item.id]?.approvedPoints ?? item.hodApprovedPoints,
               );
+              const viewApproved =
+                item.committeeApprovedPoints ?? item.hodApprovedPoints;
+              const approved = canEdit ? editApproved : viewApproved;
               const isDeducted = approved < item.hodApprovedPoints;
               const deductionAmount = item.hodApprovedPoints - approved;
 
@@ -661,7 +714,7 @@ function CommitteeReviewPage() {
                     </div>
                   </div>
 
-                  {/* Faculty Selection Info */}
+                  {/* Faculty + HOD info */}
                   <div className="mt-4 grid gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
@@ -686,53 +739,82 @@ function CommitteeReviewPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-semibold text-text">
-                        Committee Approved Points
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={item.hodApprovedPoints}
-                        value={approved}
-                        aria-label={`Committee approved points for ${item.heading}`}
-                        title={`Committee approved points for ${item.heading}`}
-                        onChange={(event) =>
-                          updateItem(item.id, {
-                            approvedPoints: Math.max(
-                              0,
-                              Math.min(
-                                item.hodApprovedPoints,
-                                Number(event.target.value || 0),
+                  {canEdit ? (
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-semibold text-text">
+                          Committee Approved Points
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={item.hodApprovedPoints}
+                          value={editApproved}
+                          aria-label={`Committee approved points for ${item.heading}`}
+                          title={`Committee approved points for ${item.heading}`}
+                          onChange={(event) =>
+                            updateItem(item.id, {
+                              approvedPoints: Math.max(
+                                0,
+                                Math.min(
+                                  item.hodApprovedPoints,
+                                  Number(event.target.value || 0),
+                                ),
                               ),
-                            ),
-                          })
-                        }
-                        className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                      />
+                            })
+                          }
+                          className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-semibold text-text">
+                          Committee Remark{" "}
+                          {isDeducted ? "(Required)" : "(Optional)"}
+                        </label>
+                        <input
+                          value={itemState[item.id]?.remark || ""}
+                          aria-label={`Committee remark for ${item.heading}`}
+                          title={`Committee remark for ${item.heading}`}
+                          onChange={(event) =>
+                            updateItem(item.id, { remark: event.target.value })
+                          }
+                          className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                          placeholder={
+                            isDeducted
+                              ? "Reason for deduction..."
+                              : "Optional remark..."
+                          }
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-semibold text-text">
-                        Committee Remark{" "}
-                        {isDeducted ? "(Required)" : "(Optional)"}
-                      </label>
-                      <input
-                        value={itemState[item.id]?.remark || ""}
-                        aria-label={`Committee remark for ${item.heading}`}
-                        title={`Committee remark for ${item.heading}`}
-                        onChange={(event) =>
-                          updateItem(item.id, { remark: event.target.value })
-                        }
-                        className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                        placeholder={
-                          isDeducted
-                            ? "Reason for deduction..."
-                            : "Optional remark..."
-                        }
-                      />
+                  ) : (
+                    /* View-only: show submitted committee values */
+                    <div className="mt-4 grid gap-3 rounded-lg bg-surface p-3 md:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                          Committee Approved Points
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-brand">
+                          {viewApproved}
+                          {isDeducted && (
+                            <span className="ml-2 text-xs font-normal text-warning">
+                              (deducted {deductionAmount} from HOD)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      {item.committeeRemark && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                            Committee Remark
+                          </p>
+                          <p className="mt-1 text-sm text-text-2">
+                            {item.committeeRemark}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
 
                   {item.evidence?.url ? (
                     <div className="mt-4">
@@ -754,33 +836,53 @@ function CommitteeReviewPage() {
         </section>
       ) : null}
 
-      <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="font-display text-lg font-semibold text-text">
-          Final Committee Submission
-        </h3>
-        <p className="mt-1 text-sm text-text-2">
-          Save each category section first, then submit the complete committee
-          review when everything is ready.
-        </p>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-text-2">
-            Total approved points: {totalApprovedPoints}
+      {/* Footer */}
+      {canEdit ? (
+        <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+          <h3 className="font-display text-lg font-semibold text-text">
+            Final Committee Submission
+          </h3>
+          <p className="mt-1 text-sm text-text-2">
+            Save each category section first, then submit the complete committee
+            review when everything is ready.
           </p>
-          <button
-            type="button"
-            onClick={() => void submitReview()}
-            disabled={saving || savingCategory !== null}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            {saving ? "Submitting..." : "Submit Final Review"}
-          </button>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-text-2">
+              Total approved points: {totalApprovedPoints}
+            </p>
+            <button
+              type="button"
+              onClick={() => void submitReview()}
+              disabled={saving || savingCategory !== null}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {saving ? "Submitting..." : "Submit Final Review"}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-success" />
+            <div>
+              <p className="text-sm font-semibold text-text">
+                Committee review complete
+              </p>
+              <p className="mt-0.5 text-sm text-text-2">
+                Total committee approved points:{" "}
+                <span className="font-bold text-brand">
+                  {totalCommitteeApproved}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+      )}
     </AppShell>
   );
 }

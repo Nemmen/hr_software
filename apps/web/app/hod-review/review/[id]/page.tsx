@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, Loader2, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Save } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -122,6 +122,9 @@ function HodReviewDetailPage() {
       active = false;
     };
   }, [appraisalId]);
+
+  const canEdit =
+    detail?.status === "SUBMITTED" || detail?.status === "HOD_REVIEW";
 
   const totalApprovedPoints = useMemo(() => {
     const itemTotal = Object.values(itemState).reduce(
@@ -243,6 +246,20 @@ function HodReviewDetailPage() {
         }
       />
 
+      {/* View-only banner */}
+      {!canEdit && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
+          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">HOD review submitted</p>
+            <p className="mt-0.5 text-text-2">
+              This appraisal has been forwarded to the next stage. You can view
+              your submitted review below (read-only).
+            </p>
+          </div>
+        </div>
+      )}
+
       {error ? (
         <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
           {error}
@@ -277,48 +294,77 @@ function HodReviewDetailPage() {
                 Faculty points: {item.facultyPoints}
               </p>
 
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Approved points
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={item.facultyPoints}
-                    value={approved}
-                    onChange={(event) =>
-                      updateItem(item.id, {
-                        approvedPoints: Math.max(
-                          0,
-                          Math.min(
-                            item.facultyPoints,
-                            Number(event.target.value || 0),
+              {canEdit ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-text">
+                      Approved points
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={item.facultyPoints}
+                      value={approved}
+                      title={`Approved points for ${item.heading}`}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          approvedPoints: Math.max(
+                            0,
+                            Math.min(
+                              item.facultyPoints,
+                              Number(event.target.value || 0),
+                            ),
                           ),
-                        ),
-                      })
-                    }
-                    className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                  />
+                        })
+                      }
+                      className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-text">
+                      Item remark {isDeducted ? "(Required)" : "(Optional)"}
+                    </label>
+                    <input
+                      value={itemState[item.id]?.remark || ""}
+                      onChange={(event) =>
+                        updateItem(item.id, { remark: event.target.value })
+                      }
+                      className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                      placeholder={
+                        isDeducted
+                          ? "Reason for deduction"
+                          : "Optional remark for this criterion"
+                      }
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Item remark {isDeducted ? "(Required)" : "(Optional)"}
-                  </label>
-                  <input
-                    value={itemState[item.id]?.remark || ""}
-                    onChange={(event) =>
-                      updateItem(item.id, { remark: event.target.value })
-                    }
-                    className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                    placeholder={
-                      isDeducted
-                        ? "Reason for deduction"
-                        : "Optional remark for this criterion"
-                    }
-                  />
+              ) : (
+                <div className="mt-4 grid gap-3 rounded-lg bg-bg p-3 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                      HOD Approved Points
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-text">
+                      {approved}
+                      {isDeducted && (
+                        <span className="ml-2 text-xs text-warning">
+                          (deducted from {item.facultyPoints})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {(itemState[item.id]?.remark || item.hodRemark) && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                        Remark
+                      </p>
+                      <p className="mt-1 text-sm text-text-2">
+                        {itemState[item.id]?.remark || item.hodRemark}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {item.evidence?.url ? (
                 <div className="mt-4">
@@ -342,62 +388,112 @@ function HodReviewDetailPage() {
         <h3 className="font-display text-lg font-semibold text-text">
           Final HOD Inputs
         </h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-text">
-              Additional points (0 to 4)
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={4}
-              value={additionalPoints}
-              onChange={(event) =>
-                setAdditionalPoints(
-                  Math.max(0, Math.min(4, Number(event.target.value || 0))),
-                )
-              }
-              className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-text">
-              Additional points remark {additionalPoints > 0 ? "(Required)" : "(Optional)"}
-            </label>
-            <input
-              value={additionalPointsRemark}
-              onChange={(event) => setAdditionalPointsRemark(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-              placeholder="Reason for granting additional points"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium text-text">
-              Overall remark (Optional)
-            </label>
-            <textarea
-              value={overallRemark}
-              onChange={(event) => setOverallRemark(event.target.value)}
-              className="min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-              placeholder="Final review note"
-            />
-          </div>
-        </div>
+        {canEdit ? (
+          <>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text">
+                  Additional points (0 to 4)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={4}
+                  value={additionalPoints}
+                  title="Additional points (0 to 4)"
+                  onChange={(event) =>
+                    setAdditionalPoints(
+                      Math.max(0, Math.min(4, Number(event.target.value || 0))),
+                    )
+                  }
+                  className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text">
+                  Additional points remark{" "}
+                  {additionalPoints > 0 ? "(Required)" : "(Optional)"}
+                </label>
+                <input
+                  value={additionalPointsRemark}
+                  onChange={(event) =>
+                    setAdditionalPointsRemark(event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                  placeholder="Reason for granting additional points"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-text">
+                  Overall remark (Optional)
+                </label>
+                <textarea
+                  value={overallRemark}
+                  onChange={(event) => setOverallRemark(event.target.value)}
+                  className="min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+                  placeholder="Final review note"
+                />
+              </div>
+            </div>
 
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-text-2">
-            Total approved points (including additional): {totalApprovedPoints}
-          </p>
-          <button
-            type="button"
-            onClick={() => void submitReview()}
-            disabled={saving}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Submitting..." : "Submit HOD Review"}
-          </button>
-        </div>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-text-2">
+                Total approved points (including additional):{" "}
+                {totalApprovedPoints}
+              </p>
+              <button
+                type="button"
+                onClick={() => void submitReview()}
+                disabled={saving}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Submitting..." : "Submit HOD Review"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 grid gap-3 rounded-lg bg-bg p-3 md:grid-cols-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                Additional Points
+              </p>
+              <p className="mt-1 text-sm font-medium text-text">
+                {additionalPoints}
+              </p>
+            </div>
+            {additionalPointsRemark && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                  Additional Points Remark
+                </p>
+                <p className="mt-1 text-sm text-text-2">
+                  {additionalPointsRemark}
+                </p>
+              </div>
+            )}
+            {overallRemark && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                  Overall Remark
+                </p>
+                <p className="mt-1 text-sm text-text-2">{overallRemark}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                Total Approved Points
+              </p>
+              <p className="mt-1 text-sm font-bold text-text">
+                {totalApprovedPoints}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
     </AppShell>
   );

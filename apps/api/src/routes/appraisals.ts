@@ -261,7 +261,7 @@ router.get(
 
       const appraisals = await prisma.appraisal.findMany({
         where: {
-          status: { in: ["HOD_REVIEW", "COMMITTEE_REVIEW"] },
+          status: { in: ["HOD_REVIEW", "COMMITTEE_REVIEW", "HR_FINALIZED", "FULLY_APPROVED"] },
           OR: [
             {
               committeeAssignments: {
@@ -272,7 +272,7 @@ router.get(
             },
             {
               AND: [
-                { status: "COMMITTEE_REVIEW" },
+                { status: { in: ["COMMITTEE_REVIEW", "HR_FINALIZED", "FULLY_APPROVED"] } },
                 {
                   committeeAssignments: {
                     none: {},

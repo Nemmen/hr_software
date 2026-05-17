@@ -89,7 +89,7 @@ router.get(
   async (req: AuthenticatedRequest, res, next) => {
     try {
       const appraisals = await prisma.appraisal.findMany({
-        where: { status: "HR_FINALIZED" },
+        where: { status: { in: ["HR_FINALIZED", "FULLY_APPROVED"] } },
         include: {
           cycle: {
             select: { id: true, name: true, startDate: true, endDate: true },

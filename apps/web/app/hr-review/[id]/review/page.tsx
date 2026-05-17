@@ -346,11 +346,8 @@ function HRReviewDetail() {
               heading: it.heading ?? it.key,
               approvedPoints: it.facultyPoints,
               evidence:
-                it.evidence && it.evidence.length > 0
-                  ? it.evidence.map((e: any) => ({
-                      url: fullEvidenceUrl(e.url),
-                      fileName: e.fileName,
-                    }))
+                it.evidence?.url
+                  ? [{ url: fullEvidenceUrl(it.evidence.url), fileName: it.evidence.fileName }]
                   : undefined,
             }))}
           />
