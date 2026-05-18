@@ -391,7 +391,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Recent Audit Logs */}
-      <div>
+      {/* <div>
         <h2 className="mb-4 text-lg font-semibold text-text">
           Recent Activity
         </h2>
@@ -436,7 +436,7 @@ export default function SuperAdminDashboard() {
             ))
           )}
         </div>
-      </div>
+      </div> */}
     </AppShell>
   );
 }
