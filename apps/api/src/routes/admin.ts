@@ -19,11 +19,12 @@ router.get(
     try {
       const [totalUsers, totalAppraisals, appraisalsByStatus, roleDistribution, users] =
         await Promise.all([
-          prisma.user.count(),
+          prisma.user.count({ where: { deletedAt: null } }),
           prisma.appraisal.count(),
           prisma.appraisal.groupBy({ by: ["status"], _count: true }),
           prisma.userRole.groupBy({ by: ["role"], _count: true }),
           prisma.user.findMany({
+            where: { deletedAt: null },
             select: {
               id: true,
               email: true,
@@ -34,6 +35,7 @@ router.get(
               roles: { select: { role: true } },
             },
             orderBy: { createdAt: "desc" },
+            take: 200,
           }),
         ]);
 
@@ -59,6 +61,7 @@ router.get(
   async (_req: AuthenticatedRequest, res, next) => {
     try {
       const users = await prisma.user.findMany({
+        where: { deletedAt: null },
         select: {
           id: true,
           email: true,
@@ -66,13 +69,10 @@ router.get(
           lastName: true,
           createdAt: true,
           updatedAt: true,
-          roles: {
-            select: {
-              role: true,
-            },
-          },
+          roles: { select: { role: true } },
         },
         orderBy: { createdAt: "desc" },
+        take: 200,
       });
 
       res.json({
@@ -364,7 +364,7 @@ router.get(
       }
 
       if (departmentId) {
-        where.user = { department: { id: departmentId as string } };
+        where.user = { departmentId: departmentId as string };
       }
 
       const appraisals = await prisma.appraisal.findMany({

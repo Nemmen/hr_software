@@ -60,6 +60,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
+
+  @@index([departmentId])
+  @@index([deletedAt])
+  @@index([createdAt])
 }
 
 model FacultyProfile {
@@ -95,6 +99,8 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
+
+  @@index([deletedAt])
 }
 
 model UserRole {
@@ -158,6 +164,8 @@ model AppraisalCycle {
   appraisals  Appraisal[]
   memoDeductions MemoDeduction[]
   placementStats PlacementStat[]
+
+  @@index([isActive])
 }
 
 model Appraisal {
@@ -184,6 +192,9 @@ model Appraisal {
   @@index([status])
   @@index([cycleId])
   @@index([userId, cycleId])
+  @@index([cycleId, status])
+  @@index([status, submittedAt])
+  @@index([submittedAt])
 }
 
 model AppraisalItem {
@@ -291,6 +302,8 @@ model Publication {
   scopus     Boolean  @default(false)
   impactFactor Float?
   createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Patent {
@@ -300,6 +313,8 @@ model Patent {
   type       String
   granted    Boolean  @default(false)
   createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 model ConsultancyGrant {
@@ -308,6 +323,8 @@ model ConsultancyGrant {
   user       User     @relation(fields: [userId], references: [id])
   amount     Float
   createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 model PlacementStat {
@@ -318,4 +335,8 @@ model PlacementStat {
   cycle      AppraisalCycle @relation(fields: [cycleId], references: [id])
   percent    Float
   createdAt  DateTime @default(now())
+
+  @@index([departmentId])
+  @@index([cycleId])
+  @@index([departmentId, cycleId])
 }

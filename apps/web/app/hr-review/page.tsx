@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useFilterData } from "@/hooks/useFilterData";
 import Link from "next/link";
 import { CheckCircle2, Clock, Eye, Loader2, Search } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
@@ -38,23 +39,7 @@ function HRReviewListPage() {
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState("");
-  const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([]);
-  const [cycles, setCycles] = useState<Array<{ id: string; name: string }>>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [deptsRes, cyclesRes] = await Promise.all([
-          api.departments.list(),
-          api.appraisals.getCycles(),
-        ]);
-        setDepartments(deptsRes.data ?? []);
-        setCycles(cyclesRes.data ?? []);
-      } catch {
-        // non-critical
-      }
-    })();
-  }, []);
+  const { departments, cycles } = useFilterData();
 
   useEffect(() => {
     let active = true;

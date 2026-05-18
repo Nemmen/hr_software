@@ -490,27 +490,28 @@ router.get(
   async (_req: AuthenticatedRequest, res, next) => {
     try {
       const users = await prisma.user.findMany({
+        where: { deletedAt: null },
         select: {
           id: true,
           email: true,
           firstName: true,
           lastName: true,
           departmentId: true,
-          facultyProfile: true,
-          documents: {
+          department: { select: { id: true, name: true } },
+          facultyProfile: {
             select: {
-              id: true,
-              name: true,
-              viewUrl: true,
-              directUrl: true,
-              module: true,
-              fieldKey: true,
+              currentSalary: true,
+              qualification: true,
+              totalExperience: true,
+              imageUrl: true,
             },
           },
           roles: { select: { role: true } },
           lockedUntil: true,
+          createdAt: true,
         },
         orderBy: { createdAt: "desc" },
+        take: 500,
       });
 
       res.json({ success: true, message: "Users for HR", data: users });
@@ -749,8 +750,9 @@ router.get(
               roles: { select: { role: true } },
             },
             orderBy: { firstName: "asc" },
+            take: 200,
           },
-          _count: { select: { users: true } },
+          _count: { select: { users: { where: { deletedAt: null } } } },
         },
         orderBy: { name: "asc" },
       });

@@ -673,54 +673,6 @@ router.get(
         return;
       }
 
-      const committees = await prisma.committee.findMany({
-        where: {
-          members: {
-            some: { id: committeeId },
-          },
-        },
-        select: {
-          id: true,
-          assignments: {
-            select: {
-              appraisal: {
-                select: {
-                  id: true,
-                  status: true,
-                  submittedAt: true,
-                  finalScore: true,
-                  user: {
-                    select: {
-                      id: true,
-                      email: true,
-                      firstName: true,
-                      lastName: true,
-                      department: { select: { id: true, name: true } },
-                    },
-                  },
-                  cycle: {
-                    select: {
-                      id: true,
-                      name: true,
-                      startDate: true,
-                      endDate: true,
-                    },
-                  },
-                  items: {
-                    select: {
-                      id: true,
-                      key: true,
-                      points: true,
-                      notes: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
       const committeeCycleParam =
         typeof req.query.cycleId === "string" ? req.query.cycleId : null;
 
@@ -735,16 +687,37 @@ router.get(
         committeeCycleId = activeCycle?.id ?? null;
       }
 
-      const appraisals = committees
-        .flatMap((committee) =>
-          committee.assignments.map((assignment) => assignment.appraisal),
-        )
-        .filter(
-          (appraisal) =>
-            (appraisal.status === "COMMITTEE_REVIEW" ||
-              appraisal.status === "HR_FINALIZED") &&
-            (!committeeCycleId || appraisal.cycle.id === committeeCycleId),
-        );
+      const appraisals = await prisma.appraisal.findMany({
+        where: {
+          ...(committeeCycleId ? { cycleId: committeeCycleId } : {}),
+          status: { in: ["COMMITTEE_REVIEW", "HR_FINALIZED"] },
+          committeeAssignments: {
+            some: {
+              committee: { members: { some: { id: committeeId } } },
+            },
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+          submittedAt: true,
+          finalScore: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              department: { select: { id: true, name: true } },
+            },
+          },
+          cycle: {
+            select: { id: true, name: true, startDate: true, endDate: true },
+          },
+          items: { select: { id: true, key: true, points: true, notes: true } },
+        },
+        orderBy: { submittedAt: "desc" },
+      });
 
       const payload = appraisals.map((appraisal) => ({
         id: appraisal.id,

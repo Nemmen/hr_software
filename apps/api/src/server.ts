@@ -64,6 +64,22 @@ const limiter = rateLimit({
 app.use(limiter);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+// Cache-control middleware
+// Short public cache for truly static/slow-changing lookup data (departments, cycles).
+// Everything else (appraisals, user data) gets no-store so clients never serve stale data.
+function cachePublic(seconds: number): express.RequestHandler {
+  return (_req, res, next) => {
+    res.setHeader("Cache-Control", `public, max-age=${seconds}, stale-while-revalidate=${seconds * 2}`);
+    next();
+  };
+}
+function noCache(): express.RequestHandler {
+  return (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  };
+}
+
 app.get("/api/health", (_req, res) =>
   res.json({ success: true, message: "API healthy" }),
 );
@@ -73,12 +89,13 @@ app.get("/api/ping", (_req, res) =>
 );
 
 app.use("/api/v1/auth", authRouter);
-app.use("/api/v1/departments", departmentsRouter);
-app.use("/api/v1/admin", adminRouter);
-app.use("/api/v1/faculty", facultyRouter);
-app.use("/api/v1/hod", hodRouter);
-app.use("/api/v1/hr", hrRouter);
-app.use("/api/v1/appraisals", appraisalsRouter);
+// Departments rarely change — allow 60s browser cache + 120s stale-while-revalidate
+app.use("/api/v1/departments", cachePublic(60), departmentsRouter);
+app.use("/api/v1/admin", noCache(), adminRouter);
+app.use("/api/v1/faculty", noCache(), facultyRouter);
+app.use("/api/v1/hod", noCache(), hodRouter);
+app.use("/api/v1/hr", noCache(), hrRouter);
+app.use("/api/v1/appraisals", noCache(), appraisalsRouter);
 app.use("/api/v1/uploads", uploadsRouter);
 app.use("/api/v1/drive", driveRouter);
 
