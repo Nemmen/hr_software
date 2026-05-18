@@ -23,6 +23,10 @@ const statusMap: Record<AppraisalStatus, { label: string; className: string }> =
       label: "Finalized",
       className: "border-success/20 bg-success-bg text-success",
     },
+    FULLY_APPROVED: {
+      label: "Finalized",
+      className: "border-success/20 bg-success-bg text-success",
+    },
     CLOSED: {
       label: "Closed",
       className: "border-slate-200 bg-slate-100 text-slate-600",
