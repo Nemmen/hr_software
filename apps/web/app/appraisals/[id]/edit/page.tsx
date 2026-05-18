@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
@@ -133,7 +133,7 @@ function AppraisalEditPage() {
     [items],
   );
 
-  const persistDraft = async () => {
+  const persistDraft = useCallback(async () => {
     if (!canEdit) {
       return;
     }
@@ -167,7 +167,7 @@ function AppraisalEditPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [canEdit, validItems, hasMissingScore, items, appraisalId]);
 
   useEffect(() => {
     if (!canEdit || !appraisal) {
@@ -191,7 +191,7 @@ function AppraisalEditPage() {
         window.clearTimeout(saveTimer.current);
       }
     };
-  }, [appraisal, canEdit, isDirty, items]);
+  }, [appraisal, canEdit, isDirty, items, persistDraft]);
 
   const updateItem = (index: number, patch: Partial<EditableItem>) => {
     setItems((current) => {

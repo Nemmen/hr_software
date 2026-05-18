@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { withAuth } from "@/components/auth/withAuth";
@@ -549,13 +550,15 @@ function HrFacultyPage() {
                     {selected.facultyProfile &&
                     (selected.facultyProfile as Record<string, unknown>)
                       .imageUrl ? (
-                      <img
+                      <Image
                         src={formatProfileValue(
                           "imageUrl",
                           (selected.facultyProfile as Record<string, unknown>)
                             .imageUrl,
                         )}
                         alt="Faculty profile"
+                        width={48}
+                        height={48}
                         className="h-12 w-12 rounded-full object-cover"
                       />
                     ) : null}

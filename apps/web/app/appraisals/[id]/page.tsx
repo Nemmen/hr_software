@@ -64,7 +64,7 @@ function AppraisalDetailPage() {
     };
   }, [appraisalId]);
 
-  const items = appraisal?.items ?? [];
+  const items = useMemo(() => appraisal?.items ?? [], [appraisal]);
   const weightedScore = useMemo(
     () =>
       calcWeightedScore(

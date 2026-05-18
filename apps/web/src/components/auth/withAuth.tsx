@@ -74,7 +74,7 @@ export function withAuth<P extends object>(
       return () => {
         active = false;
       };
-    }, [allowedRoles, isHydrated, pathname, router, session]);
+    }, [isHydrated, pathname, router, session]);
 
     if (!isHydrated || !session || isCheckingAccess) {
       return (
