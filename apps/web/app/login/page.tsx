@@ -237,7 +237,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-sm text-text-2">
+          {/* <p className="text-sm text-text-2">
             Don&apos;t have an account?{" "}
             <Link
               href="/register"
@@ -245,7 +245,7 @@ export default function LoginPage() {
             >
               Register →
             </Link>
-          </p>
+          </p> */}
         </div>
       </main>
     </div>
