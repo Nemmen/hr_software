@@ -9,10 +9,12 @@ import {
   ExternalLink,
   Loader2,
   Save,
+  XCircle,
 } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -24,6 +26,7 @@ type ReviewItem = {
   heading: string;
   selectedValue: string;
   selectedLabel: string;
+  facultyRemarks: string | null;
   facultyPoints: number;
   approvedPoints: number;
   hodRemark: string;
@@ -36,17 +39,25 @@ type ReviewItem = {
 };
 
 const CRITERION_ORDER = [
+  // Base criteria (I–XVII)
   "academics_average_result",
-  "scopus_papers",
+  "research_publications",
   "impact_factor",
   "book_chapter_book_patent",
-  "conference_seminar_symposia",
+  "conference_seminar_workshop",
   "fdp_stp",
   "research_project_consultancy",
   "research_guidance",
   "co_curricular_activities",
   "attendance",
   "awards_recognition",
+  "courses_taught",
+  "student_feedback",
+  "exam_results_subject",
+  "invited_lecture",
+  "exam_duties",
+  "outreach_activities",
+  // HOD-only criteria (XVIII–XXIII)
   "hod_remarks_score",
   "fee_recovery",
   "awards_outside_svgoi",
@@ -106,6 +117,9 @@ function HodReviewDetailPage() {
   const [overallRemark, setOverallRemark] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -248,6 +262,22 @@ function HodReviewDetailPage() {
     }
   }
 
+  async function rejectAppraisal() {
+    if (!rejectReason.trim()) return;
+    try {
+      setRejecting(true);
+      setError(null);
+      await api.hod.rejectAppraisal(appraisalId, rejectReason.trim());
+      setRejectDialogOpen(false);
+      setMessage("Appraisal rejected.");
+      setTimeout(() => router.push("/hod-review"), 1000);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || "Failed to reject");
+    } finally {
+      setRejecting(false);
+    }
+  }
+
   if (loading) {
     return (
       <AppShell role={role}>
@@ -339,6 +369,16 @@ function HodReviewDetailPage() {
               <p className="mt-1 text-sm text-text-2">
                 Faculty points: {item.facultyPoints}
               </p>
+              {item.facultyRemarks ? (
+                <div className="mt-2 rounded-lg border border-border bg-bg px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-text-3">
+                    Faculty Remarks / Author Position
+                  </p>
+                  <p className="mt-0.5 text-sm text-text-2">
+                    {item.facultyRemarks}
+                  </p>
+                </div>
+              ) : null}
 
               {canEdit ? (
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -368,17 +408,18 @@ function HodReviewDetailPage() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-text">
-                      Item remark {isDeducted ? "(Required)" : "(Optional)"}
+                      HOD Remarks {isDeducted ? "(Required)" : "(Optional)"}
                     </label>
-                    <input
+                    <textarea
                       value={itemState[item.id]?.remark || ""}
+                      rows={2}
                       onChange={(event) =>
                         updateItem(item.id, { remark: event.target.value })
                       }
-                      className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
                       placeholder={
                         isDeducted
-                          ? "Reason for deduction"
+                          ? "Reason for deduction (required)"
                           : "Optional remark for this criterion"
                       }
                     />
@@ -491,19 +532,30 @@ function HodReviewDetailPage() {
                 Total approved points (including additional):{" "}
                 {totalApprovedPoints}
               </p>
-              <button
-                type="button"
-                onClick={() => void submitReview()}
-                disabled={saving}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {saving ? "Submitting..." : "Submit HOD Review"}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRejectDialogOpen(true)}
+                  disabled={saving || rejecting}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-4 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submitReview()}
+                  disabled={saving || rejecting}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {saving ? "Submitting..." : "Submit HOD Review"}
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -545,6 +597,26 @@ function HodReviewDetailPage() {
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={rejectDialogOpen}
+        title="Reject Appraisal"
+        description={
+          <div className="space-y-3">
+            <p className="text-sm text-text-2">This will reject the appraisal. Please provide a reason.</p>
+            <textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)..."
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+          </div>
+        }
+        confirmLabel={rejecting ? "Rejecting..." : "Confirm Reject"}
+        onCancel={() => { setRejectDialogOpen(false); setRejectReason(""); }}
+        onConfirm={() => void rejectAppraisal()}
+      />
     </AppShell>
   );
 }

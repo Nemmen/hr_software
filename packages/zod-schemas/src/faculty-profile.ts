@@ -17,7 +17,13 @@ export const facultyProfileSchema = z.object({
   qualification: z.string().trim().optional().nullable(),
   graduation: z.string().trim().optional().nullable(),
   postGraduation: z.string().trim().optional().nullable(),
+  otherPgDegree: z.string().trim().optional().nullable(),
   phdDegree: z.string().trim().optional().nullable(),
+  phone: z.string().trim().optional().nullable(),
+  designation: z.string().trim().optional().nullable(),
+  employeeCode: z.string().trim().optional().nullable(),
+  collegeName: z.string().trim().optional().nullable(),
+  profileRemarks: z.string().trim().optional().nullable(),
 });
 
 export type FacultyProfileInput = z.infer<typeof facultyProfileSchema>;

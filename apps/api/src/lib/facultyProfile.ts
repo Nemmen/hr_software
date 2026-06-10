@@ -8,6 +8,8 @@ import {
 
 type UserProfileRecord = {
   id: string;
+  email: string;
+  phone: string | null;
   firstName: string;
   lastName: string;
   departmentId: string | null;
@@ -30,9 +32,14 @@ type UserProfileRecord = {
     qualification: string | null;
     graduation: string | null;
     postGraduation: string | null;
+    otherPgDegree: string | null;
     phdDegree: string | null;
     imageUrl: string | null;
     totalExperience: number | null;
+    designation: string | null;
+    employeeCode: string | null;
+    collegeName: string | null;
+    profileRemarks: string | null;
     createdAt: Date;
     updatedAt: Date;
   } | null;
@@ -159,6 +166,8 @@ export function serializeFacultyProfile(user: UserProfileRecord) {
 
   return {
     userId: user.id,
+    email: user.email,
+    phone: user.phone ?? null,
     fatherName: profile?.fatherName ?? null,
     dob: profile?.dob?.toISOString() ?? null,
     dateOfJoining: profile?.dateOfJoining?.toISOString() ?? null,
@@ -171,6 +180,7 @@ export function serializeFacultyProfile(user: UserProfileRecord) {
     qualification: profile?.qualification ?? null,
     graduation: profile?.graduation ?? null,
     postGraduation: profile?.postGraduation ?? null,
+    otherPgDegree: profile?.otherPgDegree ?? null,
     phdDegree: profile?.phdDegree ?? null,
     imageUrl:
       profile?.imageUrl ??
@@ -178,6 +188,10 @@ export function serializeFacultyProfile(user: UserProfileRecord) {
       profilePicture?.viewUrl ??
       null,
     totalExperience: profile?.totalExperience ?? null,
+    designation: profile?.designation ?? null,
+    employeeCode: profile?.employeeCode ?? null,
+    collegeName: profile?.collegeName ?? null,
+    profileRemarks: profile?.profileRemarks ?? null,
     departmentId: user.departmentId,
     department: user.department,
     documents,

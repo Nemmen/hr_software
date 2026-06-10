@@ -14,7 +14,7 @@ export function ConfirmDialog({
 }: {
   open: boolean;
   title: string;
-  description: string;
+  description: ReactNode;
   confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -30,7 +30,7 @@ export function ConfirmDialog({
         <h2 className="font-display text-xl font-semibold text-text">
           {title}
         </h2>
-        <p className="mt-2 text-sm leading-6 text-text-2">{description}</p>
+        <div className="mt-2 text-sm leading-6 text-text-2">{description}</div>
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
             type="button"

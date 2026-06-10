@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Loader2, Save } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Save, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   AppraisalReviewLayer,
   type AppraisalReviewLayerProps,
 } from "@/components/ui/AppraisalReviewSection";
+import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -36,6 +37,9 @@ function HRReviewDetail() {
   const [appraisal, setAppraisal] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [itemState, setItemState] = useState<ItemState>({});
@@ -160,6 +164,22 @@ function HRReviewDetail() {
       ...curr,
       [id]: { ...(curr[id] || {}), ...patch },
     }));
+  }
+
+  async function reject() {
+    if (!rejectReason.trim()) return;
+    try {
+      setRejecting(true);
+      setError(null);
+      await api.hr.rejectAppraisal(id, rejectReason.trim());
+      setRejectDialogOpen(false);
+      setMessage("Appraisal rejected.");
+      setTimeout(() => router.push("/hr-review"), 1000);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || "Failed to reject");
+    } finally {
+      setRejecting(false);
+    }
   }
 
   async function submit() {
@@ -488,21 +508,52 @@ function HRReviewDetail() {
           )}
         </div>
         {canEdit ? (
-          <button
-            type="button"
-            onClick={submit}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-2 font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            Submit HR Review
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setRejectDialogOpen(true)}
+              disabled={saving || rejecting}
+              className="inline-flex items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-4 py-2 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
+            >
+              <XCircle className="h-4 w-4" />
+              Reject
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={saving || rejecting}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-2 font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Forward to Committee
+            </button>
+          </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={rejectDialogOpen}
+        title="Reject Appraisal"
+        description={
+          <div className="space-y-3">
+            <p className="text-sm text-text-2">This will reject the appraisal. Please provide a reason.</p>
+            <textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)..."
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+          </div>
+        }
+        confirmLabel={rejecting ? "Rejecting..." : "Confirm Reject"}
+        onCancel={() => { setRejectDialogOpen(false); setRejectReason(""); }}
+        onConfirm={() => void reject()}
+      />
     </div>
   );
 }

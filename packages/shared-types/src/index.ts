@@ -159,6 +159,8 @@ export function getFacultyProfileDocumentConfig(
 
 export interface FacultyProfile {
   userId: UUID;
+  email?: string | null;
+  phone?: string | null;
   fatherName: string | null;
   dob: string | null;
   dateOfJoining: string | null;
@@ -171,9 +173,14 @@ export interface FacultyProfile {
   qualification: string | null;
   graduation: string | null;
   postGraduation: string | null;
+  otherPgDegree: string | null;
   phdDegree: string | null;
   imageUrl: string | null;
   totalExperience: number | null;
+  designation: string | null;
+  employeeCode: string | null;
+  collegeName: string | null;
+  profileRemarks: string | null;
   departmentId: UUID | null;
   department: DepartmentSummary | null;
   documents?: FacultyDocumentSummary[];
@@ -197,7 +204,13 @@ export interface FacultyProfilePayload {
   qualification?: string | null;
   graduation?: string | null;
   postGraduation?: string | null;
+  otherPgDegree?: string | null;
   phdDegree?: string | null;
+  phone?: string | null;
+  designation?: string | null;
+  employeeCode?: string | null;
+  collegeName?: string | null;
+  profileRemarks?: string | null;
 }
 
 export interface FacultyAppraisalOption {
@@ -241,6 +254,7 @@ export interface FacultyAppraisalRequestItemPayload {
   criterionKey: string;
   selectedValue: string;
   evidence?: FacultyEvidenceUpload[] | null;
+  remarks?: string | null;
 }
 
 export interface FacultyAppraisalRequestPayload {

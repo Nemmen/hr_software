@@ -22,10 +22,12 @@ enum AppraisalStatus {
   DRAFT
   SUBMITTED
   HOD_REVIEW
-  COMMITTEE_REVIEW
+  ADMIN_REVIEW
   HR_FINALIZED
-  SUPER_ADMIN_PENDING
+  COMMITTEE_REVIEW
   FULLY_APPROVED
+  REJECTED
+  SUPER_ADMIN_PENDING
   CLOSED
 }
 
@@ -81,9 +83,14 @@ model FacultyProfile {
   qualification      String?
   graduation         String?
   postGraduation     String?
+  otherPgDegree      String?
   phdDegree          String?
   imageUrl           String?
   totalExperience    Float?
+  designation        String?
+  employeeCode       String?
+  collegeName        String?
+  profileRemarks     String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -180,9 +187,13 @@ model Appraisal {
   finalScore     Float?
   finalPercent   Float?
   hodRemarks     String?
+  adminRemark    String?
   committeeNotes String?
   superAdminApprovedPercent Float?
   superAdminRemark String?
+  rejectedAt     DateTime?
+  rejectedBy     String?
+  rejectionReason String?
   items          AppraisalItem[]
   committeeAssignments CommitteeAssignment[]
   createdAt      DateTime @default(now())

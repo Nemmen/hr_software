@@ -15,9 +15,15 @@ export const facultyProfileSchema = z.object({
   qualification: z.string().trim().optional().nullable(),
   graduation: z.string().trim().optional().nullable(),
   postGraduation: z.string().trim().optional().nullable(),
+  otherPgDegree: z.string().trim().optional().nullable(),
   phdDegree: z.string().trim().optional().nullable(),
   totalExperience: numericValue.min(0, "Total experience is required"),
   departmentId: z.string().uuid("Department is required"),
+  phone: z.string().trim().optional().nullable(),
+  designation: z.string().trim().optional().nullable(),
+  employeeCode: z.string().trim().optional().nullable(),
+  collegeName: z.string().trim().optional().nullable(),
+  profileRemarks: z.string().trim().optional().nullable(),
 });
 
 export const facultyAppraisalEvidenceSchema = z.object({
@@ -35,6 +41,7 @@ export const facultyAppraisalRequestSchema = z.object({
         criterionKey: z.string().min(1),
         selectedValue: z.string().min(1),
         evidence: z.array(facultyAppraisalEvidenceSchema).optional().nullable(),
+        remarks: z.string().trim().optional().nullable(),
       }),
     )
     .min(1),

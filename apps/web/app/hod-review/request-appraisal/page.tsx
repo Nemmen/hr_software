@@ -30,6 +30,7 @@ type CriterionState = {
   points: number;
   uploading: boolean;
   evidence: FacultyEvidenceUpload[] | null;
+  remarks: string;
 };
 
 type PendingUpload = {
@@ -83,6 +84,7 @@ function HodSelfRequestPage() {
             points: 0,
             uploading: false,
             evidence: null,
+            remarks: "",
           };
         });
         setCriteriaState(initialState);
@@ -137,6 +139,16 @@ function HodSelfRequestPage() {
     });
     return bracket?.incrementPercent ?? 0;
   }, [policy, totalPoints]);
+
+  function updateCriterionRemarks(criterionKey: string, remarks: string) {
+    setCriteriaState((current) => ({
+      ...current,
+      [criterionKey]: {
+        ...current[criterionKey],
+        remarks,
+      },
+    }));
+  }
 
   function updateCriterionSelection(
     criterionKey: string,
@@ -228,6 +240,7 @@ function HodSelfRequestPage() {
         criterionKey: criterion.key,
         selectedValue: criteriaState[criterion.key].selectedValue,
         evidence: criteriaState[criterion.key].evidence,
+        remarks: criteriaState[criterion.key].remarks?.trim() || null,
       }));
 
       await api.faculty.submitAppraisalRequest({ items });
@@ -415,6 +428,24 @@ function HodSelfRequestPage() {
                           </option>
                         ))}
                       </select>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-text">
+                          Remarks / Notes
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={state?.remarks ?? ""}
+                          placeholder="Add author position, publication details, or any remarks..."
+                          onChange={(event) =>
+                            updateCriterionRemarks(
+                              criterion.key,
+                              event.target.value,
+                            )
+                          }
+                          className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                        />
+                      </div>
 
                       <div className="mt-4">
                         <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text transition hover:bg-surface-2">

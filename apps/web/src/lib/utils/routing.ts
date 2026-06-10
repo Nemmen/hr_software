@@ -24,6 +24,8 @@ export function getRoleHomePath(role: UiRole): string {
     case "HR":
     case "ADMIN":
       return "/hr-dashboard";
+    case "MANAGEMENT":
+      return "/admin-review";
     default:
       return "/appraisals";
   }

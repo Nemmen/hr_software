@@ -14,6 +14,7 @@ import {
   Users,
   Building2,
   LayoutDashboard,
+  BarChart3,
   Settings2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
@@ -81,7 +82,7 @@ const ROLE_NAV: Record<string, { title: string; items: NavItem[] }> = {
         href: "/hr-dashboard/submissions",
         icon: FileText,
       },
-      // { label: "Audit Log", href: "/hr-dashboard/audit", icon: Shield },
+      { label: "Reports", href: "/reports", icon: BarChart3 },
     ],
   },
   ADMIN: {
@@ -109,6 +110,13 @@ const ROLE_NAV: Record<string, { title: string; items: NavItem[] }> = {
       // },
     ],
   },
+  MANAGEMENT: {
+    title: "Admin",
+    items: [
+      { label: "Dashboard", href: "/admin-review", icon: LayoutDashboard },
+      { label: "My Profile", href: "/profile", icon: FileText },
+    ],
+  },
   SUPER_ADMIN: {
     title: "Admin",
     items: [
@@ -134,6 +142,7 @@ const ROLE_NAV: Record<string, { title: string; items: NavItem[] }> = {
         href: "/hr-dashboard/submissions",
         icon: FileText,
       },
+      { label: "Reports", href: "/reports", icon: BarChart3 },
       // { label: "Audit Log", href: "/hr-dashboard/audit", icon: Shield },
       // {
       //   label: "System Settings",

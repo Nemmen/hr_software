@@ -172,6 +172,12 @@ function FacultyProfileSection() {
       twelfthMarks: 0,
       totalExperience: 0,
       departmentId: "",
+      phone: "",
+      designation: "",
+      employeeCode: "",
+      collegeName: "",
+      otherPgDegree: "",
+      profileRemarks: "",
     },
   });
 
@@ -225,6 +231,12 @@ function FacultyProfileSection() {
           twelfthMarks: profileResponse.data.twelfthMarks ?? 0,
           totalExperience: profileResponse.data.totalExperience ?? 0,
           departmentId: profileResponse.data.departmentId ?? "",
+          phone: profileResponse.data.phone ?? "",
+          designation: profileResponse.data.designation ?? "",
+          employeeCode: profileResponse.data.employeeCode ?? "",
+          collegeName: profileResponse.data.collegeName ?? "",
+          otherPgDegree: profileResponse.data.otherPgDegree ?? "",
+          profileRemarks: profileResponse.data.profileRemarks ?? "",
         });
       } catch (loadError: any) {
         if (active) {
@@ -369,7 +381,13 @@ function FacultyProfileSection() {
       const payload: FacultyProfilePayload = {
         ...values,
         postGraduation: values.postGraduation?.trim() || null,
+        otherPgDegree: values.otherPgDegree?.trim() || null,
         phdDegree: values.phdDegree?.trim() || null,
+        phone: values.phone?.trim() || null,
+        designation: values.designation?.trim() || null,
+        employeeCode: values.employeeCode?.trim() || null,
+        collegeName: values.collegeName?.trim() || null,
+        profileRemarks: values.profileRemarks?.trim() || null,
       };
 
       const response = await api.faculty.saveProfile(payload);
@@ -403,6 +421,92 @@ function FacultyProfileSection() {
           <div className="flex items-center gap-3 text-text-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span className="text-sm">Loading faculty profile...</span>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const isOwner = role === "SUPER_ADMIN" || role === "MANAGEMENT";
+
+  if (isOwner) {
+    return (
+      <AppShell role={role}>
+        <PageHeader
+          title="Owner Profile"
+          subtitle="Your account details. Faculty profiling is managed separately by faculty members."
+        />
+        <div className="space-y-6">
+          {error && (
+            <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">{error}</div>
+          )}
+          {message && (
+            <div className="rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">{message}</div>
+          )}
+          <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="rounded-2xl bg-brand-light p-3 text-brand">
+                <User className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-text-3">Account</p>
+                <h2 className="font-display text-2xl font-semibold text-text">{displayName || "Admin user"}</h2>
+              </div>
+            </div>
+
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="grid gap-5 sm:grid-cols-2"
+            >
+              <div>
+                <label className="block text-sm font-medium text-text">Email</label>
+                <div className="mt-1 flex h-10 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm text-text-3">
+                  <Mail className="h-4 w-4 shrink-0" />
+                  {profile?.email ?? session?.user.email ?? "—"}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text">Phone</label>
+                <input
+                  {...register("phone")}
+                  type="tel"
+                  placeholder="e.g. +91 98765 43210"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text">Designation</label>
+                <input
+                  {...register("designation")}
+                  type="text"
+                  placeholder="e.g. Director"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text">Employee Code</label>
+                <input
+                  {...register("employeeCode")}
+                  type="text"
+                  placeholder="e.g. EMP001"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {saving ? "Saving..." : "Save Profile"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </AppShell>
@@ -556,137 +660,265 @@ function FacultyProfileSection() {
 
               <form
                 onSubmit={handleSubmit(onSubmit)}
-                className="mt-6 grid gap-4 md:grid-cols-2"
+                className="mt-6 space-y-6"
               >
+                {/* Basic Information */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Father&apos;s Name
-                  </label>
-                  <input
-                    {...register("fatherName")}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                  />
-                  {errors.fatherName ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.fatherName.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    {...register("dob")}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                  />
-                  {errors.dob ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.dob.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Date of Joining
-                  </label>
-                  <input
-                    type="date"
-                    {...register("dateOfJoining")}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                  />
-                  {errors.dateOfJoining ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.dateOfJoining.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Department
-                  </label>
-                  {role === "HOD" ? (
-                    <>
-                      <input type="hidden" {...register("departmentId")} />
+                  <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-3">
+                    Basic Information
+                  </h4>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Email ID
+                      </label>
                       <div className="flex h-10 w-full items-center rounded-lg border border-border bg-surface px-3 text-sm text-text-2">
-                        {profile?.department?.name ?? "Not set"}
+                        {profile?.email ?? session?.user.email ?? "Not set"}
                       </div>
-                    </>
-                  ) : (
-                    <select
-                      {...register("departmentId")}
-                      className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                    >
-                      <option value="">Select department</option>
-                      {departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {errors.departmentId ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.departmentId.message}
-                    </p>
-                  ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Phone Number
+                      </label>
+                      <input
+                        {...register("phone")}
+                        placeholder="e.g. +91 98765 43210"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.phone ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.phone.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Designation
+                      </label>
+                      <input
+                        {...register("designation")}
+                        placeholder="e.g. Assistant Professor"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Employee Code
+                      </label>
+                      <input
+                        {...register("employeeCode")}
+                        placeholder="e.g. EMP001"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        College Name
+                      </label>
+                      <input
+                        {...register("collegeName")}
+                        placeholder="e.g. SVGOI"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Father&apos;s Name
+                      </label>
+                      <input
+                        {...register("fatherName")}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.fatherName ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.fatherName.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Date of Birth
+                      </label>
+                      <input
+                        type="date"
+                        {...register("dob")}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.dob ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.dob.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
 
+                {/* Professional Information */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Current Salary
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    {...register("currentSalary", { valueAsNumber: true })}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                  />
-                  {errors.currentSalary ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.currentSalary.message}
-                    </p>
-                  ) : null}
+                  <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-3">
+                    Professional Information
+                  </h4>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Date of Joining
+                      </label>
+                      <input
+                        type="date"
+                        {...register("dateOfJoining")}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.dateOfJoining ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.dateOfJoining.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Department
+                      </label>
+                      {role === "HOD" ? (
+                        <>
+                          <input type="hidden" {...register("departmentId")} />
+                          <div className="flex h-10 w-full items-center rounded-lg border border-border bg-surface px-3 text-sm text-text-2">
+                            {profile?.department?.name ?? "Not set"}
+                          </div>
+                        </>
+                      ) : (
+                        <select
+                          {...register("departmentId")}
+                          className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                        >
+                          <option value="">Select department</option>
+                          {departments.map((department) => (
+                            <option key={department.id} value={department.id}>
+                              {department.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {errors.departmentId ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.departmentId.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Current Salary
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        {...register("currentSalary", { valueAsNumber: true })}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.currentSalary ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.currentSalary.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Last Increment Date
+                      </label>
+                      <input
+                        type="date"
+                        {...register("lastIncrementDate")}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.lastIncrementDate ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.lastIncrementDate.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Total Experience (years)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        {...register("totalExperience", { valueAsNumber: true })}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                      {errors.totalExperience ? (
+                        <p className="mt-1 text-xs text-danger">
+                          {errors.totalExperience.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
 
+                {/* Academic Qualifications */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Last Increment Date
-                  </label>
-                  <input
-                    type="date"
-                    {...register("lastIncrementDate")}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
-                  />
-                  {errors.lastIncrementDate ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.lastIncrementDate.message}
-                    </p>
-                  ) : null}
+                  <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-3">
+                    Academic Qualifications
+                  </h4>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Post Graduation (PG) Degree
+                      </label>
+                      <input
+                        {...register("postGraduation")}
+                        placeholder="e.g. M.Tech, MBA"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        Other Specialized PG Degree
+                      </label>
+                      <input
+                        {...register("otherPgDegree")}
+                        placeholder="e.g. M.Phil, PGDM, other specialization"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-text">
+                        PhD Degree
+                      </label>
+                      <input
+                        {...register("phdDegree")}
+                        placeholder="Subject / Title"
+                        className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                      />
+                    </div>
+                  </div>
                 </div>
 
+                {/* Remarks */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Total Experience
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    {...register("totalExperience", { valueAsNumber: true })}
-                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text"
+                  <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-3">
+                    Remarks
+                  </h4>
+                  <textarea
+                    {...register("profileRemarks")}
+                    rows={3}
+                    placeholder="Any additional remarks or notes about your profile..."
+                    className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text"
                   />
-                  {errors.totalExperience ? (
-                    <p className="mt-1 text-xs text-danger">
-                      {errors.totalExperience.message}
-                    </p>
-                  ) : null}
                 </div>
 
-                <div className="md:col-span-2 flex items-center justify-end gap-3 pt-2">
+                <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="submit"
                     disabled={saving}

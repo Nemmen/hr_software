@@ -43,13 +43,13 @@ function parseItemNotes(notes: string | null) {
 }
 
 function facultyIncrement(totalPoints: number) {
-  if (totalPoints <= 12) {
+  if (totalPoints <= 19) {
     return 5;
   }
-  if (totalPoints <= 20) {
+  if (totalPoints <= 34) {
     return 8;
   }
-  if (totalPoints <= 30) {
+  if (totalPoints <= 51) {
     return 10;
   }
   return 15;
@@ -358,6 +358,10 @@ router.get(
             typeof parsed.selectedLabel === "string"
               ? parsed.selectedLabel
               : "",
+          facultyRemarks:
+            typeof parsed.facultyRemarks === "string"
+              ? parsed.facultyRemarks
+              : null,
           facultyPoints:
             typeof hodReview?.originalPoints === "number"
               ? Number(hodReview.originalPoints)
@@ -599,7 +603,7 @@ router.put(
         await transaction.appraisal.update({
           where: { id: appraisalId },
           data: {
-            status: "COMMITTEE_REVIEW",
+            status: "ADMIN_REVIEW",
             locked: true,
             finalScore: totalApproved,
             finalPercent: incrementPercent,
@@ -636,7 +640,7 @@ router.put(
           appraisalId,
           totalApprovedPoints: totalApproved,
           incrementPercent,
-          forwardedStatus: "COMMITTEE_REVIEW",
+          forwardedStatus: "ADMIN_REVIEW",
         },
       });
     } catch (error) {
@@ -644,6 +648,72 @@ router.put(
     }
   },
 );
+// HOD rejection endpoint
+const rejectSchema = z.object({
+  reason: z.string().min(1, "Rejection reason is required"),
+});
+
+router.put(
+  "/requests/:appraisalId/reject",
+  authenticateRequest,
+  requireRoles("HOD", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const hodId = req.auth?.sub;
+      if (!hodId) {
+        res.status(401).json({ success: false, message: "Authentication required" });
+        return;
+      }
+
+      const { appraisalId } = req.params;
+      const { reason } = rejectSchema.parse(req.body ?? {});
+
+      const appraisal = await prisma.appraisal.findUnique({
+        where: { id: appraisalId },
+        include: { user: { select: { id: true, departmentId: true, roles: { select: { role: true } } } } },
+      });
+
+      if (!appraisal) {
+        res.status(404).json({ success: false, message: "Appraisal not found" });
+        return;
+      }
+
+      if (!["SUBMITTED", "HOD_REVIEW"].includes(appraisal.status)) {
+        res.status(400).json({ success: false, message: "Appraisal cannot be rejected at this stage" });
+        return;
+      }
+
+      const allowed = await isHodForUser(hodId, appraisal.user.departmentId ?? null);
+      if (!allowed && !req.auth?.roles?.includes("SUPER_ADMIN")) {
+        res.status(403).json({ success: false, message: "Access denied" });
+        return;
+      }
+
+      await prisma.appraisal.update({
+        where: { id: appraisalId },
+        data: {
+          status: "REJECTED",
+          rejectedAt: new Date(),
+          rejectedBy: hodId,
+          rejectionReason: reason.trim(),
+        },
+      });
+
+      await writeAuditLog({
+        actorId: hodId,
+        action: "appraisal.hod.rejected",
+        resource: "Appraisal",
+        resourceId: appraisalId,
+        meta: { reason },
+      });
+
+      res.json({ success: true, message: "Appraisal rejected", data: { appraisalId, status: "REJECTED" } });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // Committee review endpoints
 const committeeReviewSchema = z.object({
   items: z
@@ -801,7 +871,7 @@ router.put(
         return;
       }
 
-      if (appraisal.status !== "COMMITTEE_REVIEW") {
+      if (!["COMMITTEE_REVIEW", "HR_FINALIZED"].includes(appraisal.status)) {
         res.status(400).json({
           success: false,
           message: "Appraisal is not pending committee review",
@@ -902,7 +972,7 @@ router.put(
           await transaction.appraisal.update({
             where: { id: appraisalId },
             data: {
-              status: "HR_FINALIZED",
+              status: "FULLY_APPROVED",
               finalScore: totalApproved,
               committeeNotes: JSON.stringify({
                 overallRemark: parsed.overallRemark?.trim() || null,
@@ -936,9 +1006,60 @@ router.put(
         data: {
           appraisalId,
           totalApprovedPoints: totalApproved,
-          forwardedStatus: isFinalSubmit ? "HR_FINALIZED" : "COMMITTEE_REVIEW",
+          forwardedStatus: isFinalSubmit ? "FULLY_APPROVED" : "COMMITTEE_REVIEW",
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// Committee rejection endpoint
+router.put(
+  "/committee/requests/:appraisalId/reject",
+  authenticateRequest,
+  requireRoles("COMMITTEE", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const actorId = req.auth?.sub;
+      if (!actorId) {
+        res.status(401).json({ success: false, message: "Authentication required" });
+        return;
+      }
+
+      const { appraisalId } = req.params;
+      const { reason } = rejectSchema.parse(req.body ?? {});
+
+      const appraisal = await prisma.appraisal.findUnique({
+        where: { id: appraisalId },
+        select: { id: true, status: true },
+      });
+
+      if (!appraisal) {
+        res.status(404).json({ success: false, message: "Appraisal not found" });
+        return;
+      }
+
+      if (!["COMMITTEE_REVIEW", "HR_FINALIZED"].includes(appraisal.status)) {
+        res.status(400).json({ success: false, message: "Appraisal cannot be rejected at this stage" });
+        return;
+      }
+
+      await prisma.appraisal.update({
+        where: { id: appraisalId },
+        data: { status: "REJECTED", rejectedAt: new Date(), rejectedBy: actorId, rejectionReason: reason.trim() },
+      });
+
+      await writeAuditLog({
+        actorId,
+        action: "appraisal.committee.rejected",
+        resource: "Appraisal",
+        resourceId: appraisalId,
+        meta: { reason },
+      });
+
+      res.json({ success: true, message: "Appraisal rejected", data: { appraisalId, status: "REJECTED" } });
     } catch (error) {
       next(error);
     }

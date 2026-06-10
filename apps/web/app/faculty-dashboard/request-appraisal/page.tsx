@@ -33,6 +33,7 @@ type CriterionState = {
   points: number;
   uploading: boolean;
   evidence: FacultyEvidenceUpload[] | null;
+  remarks: string;
 };
 
 type PendingUpload = {
@@ -213,6 +214,7 @@ function FacultyAppraisalRequestPage() {
           points: 0,
           uploading: false,
           evidence: null,
+          remarks: "",
         };
       });
       setCriteriaState(initialState);
@@ -275,6 +277,13 @@ function FacultyAppraisalRequestPage() {
         selectedValue,
         points: option?.points ?? 0,
       },
+    }));
+  }
+
+  function updateCriterionRemarks(criterionKey: string, remarks: string) {
+    setCriteriaState((current) => ({
+      ...current,
+      [criterionKey]: { ...current[criterionKey], remarks },
     }));
   }
 
@@ -345,6 +354,7 @@ function FacultyAppraisalRequestPage() {
         criterionKey: criterion.key,
         selectedValue: criteriaState[criterion.key].selectedValue,
         evidence: criteriaState[criterion.key].evidence,
+        remarks: criteriaState[criterion.key].remarks?.trim() || null,
       }));
 
       await api.faculty.submitAppraisalRequest({ items });
@@ -510,6 +520,24 @@ function FacultyAppraisalRequestPage() {
                         </select>
 
                         <div className="mt-4">
+                          <label className="mb-1.5 block text-sm font-medium text-text">
+                            Remarks
+                          </label>
+                          <textarea
+                            value={state?.remarks ?? ""}
+                            onChange={(event) =>
+                              updateCriterionRemarks(
+                                criterion.key,
+                                event.target.value,
+                              )
+                            }
+                            rows={2}
+                            placeholder="Author position, publication details, or any additional remarks..."
+                            className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text"
+                          />
+                        </div>
+
+                        <div className="mt-3">
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text transition hover:bg-surface-2">
                             {state?.uploading ? (
                               <Loader2 className="h-4 w-4 animate-spin" />

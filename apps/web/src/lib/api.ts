@@ -438,6 +438,10 @@ export const api = {
       unwrap<Record<string, unknown>>(
         apiClient.put(`/hod/requests/${id}/review`, payload),
       ),
+    rejectAppraisal: (id: string, reason: string) =>
+      unwrap<Record<string, unknown>>(
+        apiClient.put(`/hod/requests/${id}/reject`, { reason }),
+      ),
   },
   committee: {
     getTeamAppraisals: (cycleId?: string) =>
@@ -458,6 +462,10 @@ export const api = {
     ) =>
       unwrap<AppraisalSummary>(
         apiClient.put(`/hod/committee/requests/${id}/review`, data),
+      ),
+    rejectAppraisal: (id: string, reason: string) =>
+      unwrap<Record<string, unknown>>(
+        apiClient.put(`/hod/committee/requests/${id}/reject`, { reason }),
       ),
   },
   hr: {
@@ -482,6 +490,10 @@ export const api = {
     ) =>
       unwrap<AppraisalSummary>(
         apiClient.put(`/hr/requests/${id}/review`, data),
+      ),
+    rejectAppraisal: (id: string, reason: string) =>
+      unwrap<Record<string, unknown>>(
+        apiClient.put(`/hr/requests/${id}/reject`, { reason }),
       ),
     getUsers: () => unwrap<HrUserSummary[]>(apiClient.get("/hr/users")),
     createUser: (data: {
@@ -600,6 +612,26 @@ export const api = {
     getAppraisalDetails: (appraisalId: string) =>
       unwrap<FacultyAppraisalDetail>(
         apiClient.get(`/faculty/appraisal/${appraisalId}`),
+      ),
+  },
+  adminReview: {
+    getList: (cycleId?: string) =>
+      unwrap<Record<string, unknown>[]>(
+        apiClient.get(`/admin-review/review-list${cycleId ? `?cycleId=${encodeURIComponent(cycleId)}` : ""}`),
+      ),
+    getById: (id: string) =>
+      unwrap<Record<string, unknown>>(apiClient.get(`/admin-review/requests/${id}`)),
+    submitReview: (
+      id: string,
+      data: {
+        items: Array<{ itemId: string; approvedPoints: number; remark?: string }>;
+        overallRemark?: string;
+      },
+    ) =>
+      unwrap<Record<string, unknown>>(apiClient.put(`/admin-review/requests/${id}/review`, data)),
+    rejectAppraisal: (id: string, reason: string) =>
+      unwrap<Record<string, unknown>>(
+        apiClient.put(`/admin-review/requests/${id}/reject`, { reason }),
       ),
   },
   superAdmin: {

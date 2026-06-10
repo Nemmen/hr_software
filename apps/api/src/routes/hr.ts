@@ -105,7 +105,7 @@ router.get(
       const appraisals = await prisma.appraisal.findMany({
         where: {
           ...(effectiveCycleId ? { cycleId: effectiveCycleId } : {}),
-          status: { in: ["HR_FINALIZED", "FULLY_APPROVED"] },
+          status: { in: ["HR_FINALIZED", "COMMITTEE_REVIEW", "FULLY_APPROVED"] },
         },
         include: {
           cycle: {
@@ -360,7 +360,7 @@ router.put(
       if (appraisal.status !== "HR_FINALIZED") {
         res.status(400).json({
           success: false,
-          message: "Appraisal is not pending HR finalization",
+          message: "Appraisal is not pending HR review",
         });
         return;
       }
@@ -457,7 +457,7 @@ router.put(
         await transaction.appraisal.update({
           where: { id: appraisalId },
           data: {
-            status: "SUPER_ADMIN_PENDING",
+            status: "COMMITTEE_REVIEW",
             finalScore: totalApproved,
           },
         });
@@ -473,9 +473,64 @@ router.put(
 
       res.json({
         success: true,
-        message: "Appraisal finalized for HR",
-        data: { appraisalId, totalApprovedPoints: totalApproved },
+        message: "Appraisal forwarded to Committee",
+        data: { appraisalId, totalApprovedPoints: totalApproved, forwardedStatus: "COMMITTEE_REVIEW" },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// HR rejection endpoint
+const hrRejectSchema = z.object({
+  reason: z.string().min(1, "Rejection reason is required"),
+});
+
+router.put(
+  "/requests/:appraisalId/reject",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const actorId = req.auth?.sub;
+      if (!actorId) {
+        res.status(401).json({ success: false, message: "Authentication required" });
+        return;
+      }
+
+      const { appraisalId } = req.params;
+      const { reason } = hrRejectSchema.parse(req.body ?? {});
+
+      const appraisal = await prisma.appraisal.findUnique({
+        where: { id: appraisalId },
+        select: { id: true, status: true },
+      });
+
+      if (!appraisal) {
+        res.status(404).json({ success: false, message: "Appraisal not found" });
+        return;
+      }
+
+      if (appraisal.status !== "HR_FINALIZED") {
+        res.status(400).json({ success: false, message: "Appraisal cannot be rejected at this stage" });
+        return;
+      }
+
+      await prisma.appraisal.update({
+        where: { id: appraisalId },
+        data: { status: "REJECTED", rejectedAt: new Date(), rejectedBy: actorId, rejectionReason: reason.trim() },
+      });
+
+      await writeAuditLog({
+        actorId,
+        action: "appraisal.hr.rejected",
+        resource: "Appraisal",
+        resourceId: appraisalId,
+        meta: { reason },
+      });
+
+      res.json({ success: true, message: "Appraisal rejected", data: { appraisalId, status: "REJECTED" } });
     } catch (error) {
       next(error);
     }

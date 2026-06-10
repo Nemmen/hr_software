@@ -72,7 +72,7 @@ function parseItemNotes(notes: string | null): Record<string, unknown> {
 const baseCriteria: PolicyCriterion[] = [
   {
     key: "academics_average_result",
-    heading: "I. Academics Average Result (0 to 4)",
+    heading: "I. Academics Average Result",
     category: "Academics",
     options: [
       { value: "below_40", label: "Below 40%", points: 1 },
@@ -82,14 +82,30 @@ const baseCriteria: PolicyCriterion[] = [
     ],
   },
   {
-    key: "scopus_papers",
-    heading: "II. Scopus Paper Published / Accepted",
+    key: "research_publications",
+    heading: "II. Research Publications (Max 4 Papers)",
     category: "Research",
     options: [
-      { value: "paper_1", label: "Paper 1", points: 1 },
-      { value: "paper_2", label: "Paper 2", points: 2 },
-      { value: "paper_3", label: "Paper 3", points: 3 },
-      { value: "paper_4", label: "Paper 4", points: 4 },
+      {
+        value: "peer_reviewed",
+        label: "Peer Reviewed Journal (1 paper)",
+        points: 1,
+      },
+      {
+        value: "wos_ieee_abdc_cd",
+        label: "WOS / IEEE / ABDC Category C & D",
+        points: 2,
+      },
+      {
+        value: "scopus_q2_abdc_ab",
+        label: "Scopus Q2 / ABDC Category A & B",
+        points: 3,
+      },
+      {
+        value: "scopus_q1",
+        label: "Scopus Q1 Journal (up to 4 papers, 1 pt each, max 4)",
+        points: 4,
+      },
     ],
   },
   {
@@ -112,40 +128,44 @@ const baseCriteria: PolicyCriterion[] = [
       {
         value: "book_or_design_patent_national",
         label:
-          "Book Published / Design Patent / Book Edited / Book Authored (National Publisher)",
+          "Book Published / Design Patent / Book Edited / Book Authored (National Publication) — 2 marks",
         points: 2,
       },
       {
         value: "book_or_edited_or_authored_international",
         label:
-          "Book Published / Book Edited / Book Authored (International Publisher)",
+          "Book Published / Book Edited / Book Authored (International Publication) — 3 marks",
         points: 3,
       },
       {
         value: "two_design_or_one_utility_granted",
-        label: "2 Design Patent / 1 Utility Patent (Granted)",
+        label: "2 Design Patents OR 1 Utility Patent (Granted) — 4 marks",
         points: 4,
       },
     ],
   },
   {
-    key: "conference_seminar_symposia",
-    heading: "V. Conference / Seminar / Symposia",
+    key: "conference_seminar_workshop",
+    heading: "V. Conference / Seminar / Workshop",
     category: "Research",
     options: [
-      { value: "attended_one", label: "Any one attended", points: 1 },
       {
-        value: "presentation_national",
-        label: "Presentation - National Conference / Seminar / Symposium",
+        value: "workshop_attended",
+        label: "Workshop Attended",
+        points: 1,
+      },
+      {
+        value: "national_conf_presentation",
+        label: "National Conference Presentation",
         points: 2,
       },
       {
-        value: "organized_or_multiple_presentations",
-        label: "Organised Seminar / Presentation in two or more",
+        value: "international_conf_presentation",
+        label: "International Conference Presentation",
         points: 3,
       },
       {
-        value: "organized_national_or_international",
+        value: "organized_conf",
         label: "Organised National / International Conference in Campus",
         points: 4,
       },
@@ -156,34 +176,45 @@ const baseCriteria: PolicyCriterion[] = [
     heading: "VI. FDP / STP",
     category: "Academics",
     options: [
-      { value: "fdp_attended", label: "FDP attended", points: 1 },
-      { value: "fdp_conducted", label: "FDP conducted", points: 2 },
+      { value: "fdp_attended", label: "FDP Attended", points: 1 },
+      { value: "fdp_conducted", label: "FDP Conducted", points: 2 },
       {
         value: "online_course_or_stp",
-        label:
-          "Online course certificate like Symposium / MOOC etc / STP in campus or outside campus",
+        label: "Online Course Certificate / MOOC / STP (in or outside campus)",
         points: 3,
       },
       {
         value: "mooc_developed",
-        label: "MOOC developed by faculty",
+        label: "MOOC Developed by Faculty",
         points: 4,
       },
     ],
   },
   {
     key: "research_project_consultancy",
-    heading: "VII. Research Project / Consultancy Granted During Academic Year",
+    heading: "VII. Research Project / Consultancy",
     category: "Research",
     options: [
-      { value: "between_10000_50000", label: "10,000 to 50,000", points: 1 },
-      { value: "between_51000_100000", label: "51,000 to 1,00,000", points: 2 },
       {
-        value: "between_100000_200000",
-        label: "1,00,000 to 2,00,000",
+        value: "consultancy_project",
+        label: "Consultancy Project Granted",
+        points: 1,
+      },
+      {
+        value: "non_govt_project",
+        label: "Non-Government Funded Research Project",
+        points: 2,
+      },
+      {
+        value: "govt_project_small",
+        label: "Government Funded Research Project (< 2 Lakh)",
         points: 3,
       },
-      { value: "above_200000", label: "Above 2 Lakh", points: 4 },
+      {
+        value: "govt_project_large",
+        label: "Government Funded Research Project (≥ 2 Lakh)",
+        points: 4,
+      },
     ],
   },
   {
@@ -212,7 +243,7 @@ const baseCriteria: PolicyCriterion[] = [
     options: [
       {
         value: "participate_institutional",
-        label: "Participate in institutional events",
+        label: "Participate in Institutional Events",
         points: 1,
       },
       {
@@ -246,8 +277,7 @@ const baseCriteria: PolicyCriterion[] = [
     options: [
       {
         value: "university_or_community",
-        label:
-          "By university/community certificate or award/Employee of the Month",
+        label: "University / Community Certificate / Award / Employee of the Month",
         points: 1,
       },
       { value: "state_award", label: "State Award", points: 2 },
@@ -256,7 +286,98 @@ const baseCriteria: PolicyCriterion[] = [
         label: "National Award / 2 times Employee of the Month",
         points: 3,
       },
-      { value: "more_than_one_award", label: "More than 1 award", points: 4 },
+      { value: "more_than_one_award", label: "More than 1 Award", points: 4 },
+    ],
+  },
+  // 1.6 Teaching Process — New Academic Parameters
+  {
+    key: "courses_taught",
+    heading: "XII. Number of Courses Taught (Load Factor)",
+    category: "Academics",
+    options: [
+      { value: "one_course", label: "1 Course", points: 1 },
+      { value: "two_courses", label: "2 Courses", points: 2 },
+      { value: "three_courses", label: "3 Courses", points: 3 },
+      { value: "four_plus_courses", label: "4 or More Courses", points: 4 },
+    ],
+  },
+  {
+    key: "student_feedback",
+    heading: "XIII. Student Feedback on Faculty (Subject Wise)",
+    category: "Academics",
+    options: [
+      { value: "feedback_below_60", label: "Below 60%", points: 1 },
+      { value: "feedback_60_75", label: "60% – 75%", points: 2 },
+      { value: "feedback_75_90", label: "75% – 90%", points: 3 },
+      { value: "feedback_above_90", label: "Above 90%", points: 4 },
+    ],
+  },
+  {
+    key: "exam_results_subject",
+    heading: "XIV. Semester Exam Result of Faculty Subject",
+    category: "Academics",
+    options: [
+      { value: "result_below_60", label: "Below 60% Pass", points: 1 },
+      { value: "result_60_75", label: "60% – 75% Pass", points: 2 },
+      { value: "result_75_90", label: "75% – 90% Pass", points: 3 },
+      { value: "result_above_90", label: "Above 90% Pass", points: 4 },
+    ],
+  },
+  {
+    key: "invited_lecture",
+    heading: "XV. Invited Lecture / Resource Person",
+    category: "Research",
+    options: [
+      { value: "one_invited_lecture", label: "1 Invited Lecture", points: 1 },
+      { value: "two_invited_lectures", label: "2 Invited Lectures", points: 2 },
+      { value: "three_invited_lectures", label: "3 Invited Lectures", points: 3 },
+      {
+        value: "four_plus_national_lecture",
+        label: "4+ Lectures / National Level Resource Person",
+        points: 4,
+      },
+    ],
+  },
+  {
+    key: "exam_duties",
+    heading: "XVI. Exam Duties",
+    category: "Academics",
+    options: [
+      { value: "invigilator", label: "Invigilator", points: 1 },
+      {
+        value: "deputy_superintendent",
+        label: "Deputy Superintendent",
+        points: 2,
+      },
+      {
+        value: "centre_superintendent",
+        label: "Centre Superintendent",
+        points: 3,
+      },
+      { value: "chief_coordinator", label: "Chief Coordinator", points: 4 },
+    ],
+  },
+  {
+    key: "outreach_activities",
+    heading: "XVII. Outreach Activities",
+    category: "Others",
+    options: [
+      {
+        value: "participated_outreach",
+        label: "Participated in Outreach Program",
+        points: 1,
+      },
+      { value: "coordinator_outreach", label: "Coordinator", points: 2 },
+      {
+        value: "organized_local_outreach",
+        label: "Organised Local / Institutional Outreach",
+        points: 3,
+      },
+      {
+        value: "organized_regional_national",
+        label: "Organised Regional / National Outreach",
+        points: 4,
+      },
     ],
   },
 ];
@@ -264,7 +385,7 @@ const baseCriteria: PolicyCriterion[] = [
 const hodOnlyCriteria: PolicyCriterion[] = [
   {
     key: "hod_remarks_score",
-    heading: "XII. HOD's Remarks",
+    heading: "XVIII. HOD's Remarks",
     category: "Others",
     options: [
       { value: "hod_1", label: "HOD remarks score 1", points: 1 },
@@ -275,7 +396,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   },
   {
     key: "fee_recovery",
-    heading: "XIII. Fee Recovery",
+    heading: "XIX. Fee Recovery",
     category: "Others",
     options: [
       {
@@ -291,7 +412,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   {
     key: "awards_outside_svgoi",
     heading:
-      "XIV. Awards Earned by Department Students in Events Organized Outside SVGOI",
+      "XX. Awards Earned by Department Students in Events Organized Outside SVGOI",
     category: "Others",
     options: [
       { value: "upto_2_awards", label: "Upto 2 awards", points: 1 },
@@ -302,7 +423,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   },
   {
     key: "overall_university_result",
-    heading: "XV. Overall University Result",
+    heading: "XXI. Overall University Result",
     category: "Academics",
     options: [
       {
@@ -317,7 +438,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   },
   {
     key: "placement",
-    heading: "XVI. Placement",
+    heading: "XXII. Placement",
     category: "Academics",
     options: [
       {
@@ -333,7 +454,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   {
     key: "department_university_positions",
     heading:
-      "XVII. Position Earned by Department Students in University Academics",
+      "XXIII. Position Earned by Department Students in University Academics",
     category: "Academics",
     options: [
       { value: "between_0_5_students", label: "0 - 5 students", points: 1 },
@@ -358,23 +479,23 @@ const hodOnlyCriteria: PolicyCriterion[] = [
 
 const facultyPolicy: AppraisalPolicy = {
   criteria: [...baseCriteria],
-  maxPoints: 44,
+  maxPoints: 68,
   incrementBrackets: [
-    { min: 0, max: 12, incrementPercent: 5 },
-    { min: 13, max: 20, incrementPercent: 8 },
-    { min: 21, max: 30, incrementPercent: 10 },
-    { min: 31, incrementPercent: 15 },
+    { min: 0, max: 19, incrementPercent: 5 },
+    { min: 20, max: 34, incrementPercent: 8 },
+    { min: 35, max: 51, incrementPercent: 10 },
+    { min: 52, incrementPercent: 15 },
   ],
 };
 
 const hodPolicy: AppraisalPolicy = {
   criteria: [...baseCriteria, ...hodOnlyCriteria],
-  maxPoints: 68,
+  maxPoints: 92,
   incrementBrackets: [
-    { min: 0, max: 16, incrementPercent: 5 },
-    { min: 17, max: 30, incrementPercent: 8 },
-    { min: 31, max: 45, incrementPercent: 10 },
-    { min: 46, incrementPercent: 15 },
+    { min: 0, max: 25, incrementPercent: 5 },
+    { min: 26, max: 46, incrementPercent: 8 },
+    { min: 47, max: 69, incrementPercent: 10 },
+    { min: 70, incrementPercent: 15 },
   ],
 };
 
@@ -415,6 +536,8 @@ function getProfileUser(userId: string) {
     where: { id: userId },
     select: {
       id: true,
+      email: true,
+      phone: true,
       firstName: true,
       lastName: true,
       departmentId: true,
@@ -619,21 +742,34 @@ router.put(
         qualification,
         graduation,
         postGraduation,
+        otherPgDegree: parsed.otherPgDegree?.trim() || null,
         phdDegree,
         totalExperience: parsed.totalExperience,
+        designation: parsed.designation?.trim() || null,
+        employeeCode: parsed.employeeCode?.trim() || null,
+        collegeName: parsed.collegeName?.trim() || null,
+        profileRemarks: parsed.profileRemarks?.trim() || null,
       };
 
+      const phoneUpdate = { phone: parsed.phone?.trim() || null };
+
       if (isHod) {
-        await prisma.facultyProfile.upsert({
-          where: { userId },
-          update: profileData,
-          create: { userId, ...profileData },
-        });
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: userId },
+            data: phoneUpdate,
+          }),
+          prisma.facultyProfile.upsert({
+            where: { userId },
+            update: profileData,
+            create: { userId, ...profileData },
+          }),
+        ]);
       } else {
         await prisma.$transaction([
           prisma.user.update({
             where: { id: userId },
-            data: { departmentId: parsed.departmentId },
+            data: { departmentId: parsed.departmentId, ...phoneUpdate },
           }),
           prisma.facultyProfile.upsert({
             where: { userId },
@@ -1021,6 +1157,10 @@ router.get(
             typeof parsed.selectedLabel === "string"
               ? parsed.selectedLabel
               : "",
+          facultyRemarks:
+            typeof parsed.facultyRemarks === "string"
+              ? parsed.facultyRemarks
+              : null,
           facultyPoints: item.points,
           hodApprovedPoints:
             typeof hodReview?.approvedPoints === "number"
@@ -1268,6 +1408,7 @@ router.post(
             selectedValue: option.value,
             selectedLabel: option.label,
             evidence: selected.evidence ?? null,
+            facultyRemarks: selected.remarks?.trim() || null,
           }),
         };
       });
