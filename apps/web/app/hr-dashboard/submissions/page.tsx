@@ -6,6 +6,7 @@ import { Clock, Loader2, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { withAuth } from "@/components/auth/withAuth";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -33,6 +34,7 @@ type HrSubmissionSummary = {
 function HrSubmissionsPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [reviewSubmissions, setReviewSubmissions] = useState<
     HrSubmissionSummary[]
   >([]);
@@ -44,7 +46,6 @@ function HrSubmissionsPage() {
     isAdminRole ? "approved" : "review",
   );
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,7 +53,6 @@ function HrSubmissionsPage() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const [reviewResponse, approvedResponse] = await Promise.all([
           api.hr.getTeamAppraisals("all"),
           api.hr.getApprovedAppraisals(),
@@ -66,11 +66,14 @@ function HrSubmissionsPage() {
         setApprovedSubmissions(approvedResponse.data ?? []);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load submissions",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) setLoading(false);
@@ -118,12 +121,6 @@ function HrSubmissionsPage() {
         </div>
       ) : (
         <>
-          {error ? (
-            <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
-
           <div className={`mb-6 grid gap-4 ${isAdminRole ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
             {!isAdminRole && (
               <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">

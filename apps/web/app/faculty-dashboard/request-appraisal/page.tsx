@@ -17,6 +17,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui";
 import { api, type FacultyCycleSummary } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
@@ -145,10 +146,10 @@ function cycleStatusLabel(entry: FacultyCycleSummary): {
 function FacultyAppraisalRequestPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [cycles, setCycles] = useState<FacultyCycleSummary[]>([]);
   const [cyclesLoading, setCyclesLoading] = useState(true);
-  const [cyclesError, setCyclesError] = useState<string | null>(null);
 
   const [selectedCycle, setSelectedCycle] =
     useState<FacultyCycleSummary | null>(null);
@@ -158,8 +159,6 @@ function FacultyAppraisalRequestPage() {
   >({});
   const [formLoading, setFormLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(
     null,
   );
@@ -171,18 +170,20 @@ function FacultyAppraisalRequestPage() {
     async function loadCycles() {
       try {
         setCyclesLoading(true);
-        setCyclesError(null);
         const response = await api.faculty.getCycles();
         if (active) {
           setCycles(response.data);
         }
       } catch (err: any) {
         if (active) {
-          setCyclesError(
-            err?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message ||
               err?.message ||
               "Failed to load appraisal cycles",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -200,8 +201,6 @@ function FacultyAppraisalRequestPage() {
   async function openForm(entry: FacultyCycleSummary) {
     setSelectedCycle(entry);
     setFormLoading(true);
-    setError(null);
-    setMessage(null);
 
     try {
       const policyResponse = await api.faculty.getAppraisalPolicy();
@@ -219,9 +218,12 @@ function FacultyAppraisalRequestPage() {
       });
       setCriteriaState(initialState);
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message || err?.message || "Failed to load form",
-      );
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to load form",
+        variant: "error",
+      });
     } finally {
       setFormLoading(false);
     }
@@ -231,8 +233,6 @@ function FacultyAppraisalRequestPage() {
     setSelectedCycle(null);
     setPolicy(null);
     setCriteriaState({});
-    setError(null);
-    setMessage(null);
   }
 
   const totalPoints = useMemo(
@@ -290,16 +290,22 @@ function FacultyAppraisalRequestPage() {
   async function uploadEvidence(criterionKey: string, file: File) {
     const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
     if (!allowedTypes.includes(file.type)) {
-      setError("Only JPG, PNG, and PDF evidence files are allowed.");
+      toast({
+        title: "Error",
+        description: "Only JPG, PNG, and PDF evidence files are allowed.",
+        variant: "error",
+      });
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError("Evidence file size must be 5MB or less.");
+      toast({
+        title: "Error",
+        description: "Evidence file size must be 5MB or less.",
+        variant: "error",
+      });
       return;
     }
 
-    setError(null);
-    setMessage(null);
     setCriteriaState((current) => ({
       ...current,
       [criterionKey]: { ...current[criterionKey], uploading: true },
@@ -324,11 +330,14 @@ function FacultyAppraisalRequestPage() {
         ...current,
         [criterionKey]: { ...current[criterionKey], uploading: false },
       }));
-      setError(
-        uploadError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          uploadError?.response?.data?.message ||
           uploadError?.message ||
           "Failed to upload evidence",
-      );
+        variant: "error",
+      });
     }
   }
 
@@ -347,8 +356,6 @@ function FacultyAppraisalRequestPage() {
 
     try {
       setSubmitting(true);
-      setError(null);
-      setMessage(null);
 
       const items = policy.criteria.map((criterion) => ({
         criterionKey: criterion.key,
@@ -358,17 +365,24 @@ function FacultyAppraisalRequestPage() {
       }));
 
       await api.faculty.submitAppraisalRequest({ items });
-      setMessage("Appraisal submitted successfully.");
+      toast({
+        title: "Success",
+        description: "Appraisal submitted successfully.",
+        variant: "success",
+      });
 
       const updatedCycles = await api.faculty.getCycles();
       setCycles(updatedCycles.data);
       closeForm();
     } catch (submitError: any) {
-      setError(
-        submitError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          submitError?.response?.data?.message ||
           submitError?.message ||
           "Failed to submit appraisal request",
-      );
+        variant: "error",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -406,16 +420,6 @@ function FacultyAppraisalRequestPage() {
     );
   }
 
-  if (cyclesError) {
-    return (
-      <AppShell role={role}>
-        <PageHeader title="Appraisal Cycles" />
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {cyclesError}
-        </div>
-      </AppShell>
-    );
-  }
 
   /* ---- Inline appraisal form ---- */
   if (selectedCycle) {
@@ -445,18 +449,6 @@ function FacultyAppraisalRequestPage() {
           </div>
         ) : (
           <>
-            {error ? (
-              <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-                {error}
-              </div>
-            ) : null}
-
-            {message ? (
-              <div className="mb-5 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-                {message}
-              </div>
-            ) : null}
-
             <div className="mb-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
@@ -703,7 +695,9 @@ function FacultyAppraisalRequestPage() {
             const { label, color, bgColor } = cycleStatusLabel(entry);
             const isSubmitted =
               entry.appraisal && SUBMITTED_STATUSES.has(entry.appraisal.status);
+            const isDraft = entry.appraisal?.status === "DRAFT";
             const canStart = entry.cycle.isActive && !entry.appraisal;
+            const canResume = entry.cycle.isActive && isDraft;
 
             return (
               <div
@@ -757,6 +751,15 @@ function FacultyAppraisalRequestPage() {
                         <ExternalLink className="h-4 w-4" />
                         View Appraisal
                       </Link>
+                    ) : canResume ? (
+                      <button
+                        type="button"
+                        onClick={() => void openForm(entry)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark"
+                      >
+                        <SendHorizontal className="h-4 w-4" />
+                        Resume Appraisal
+                      </button>
                     ) : canStart ? (
                       <button
                         type="button"

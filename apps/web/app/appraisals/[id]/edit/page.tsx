@@ -10,6 +10,7 @@ import { withAuth } from "@/components/auth/withAuth";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import {
   AppraisalItemRow,
   type AppraisalItemView,
@@ -35,11 +36,11 @@ function AppraisalEditPage() {
   const params = useParams();
   const appraisalId = params?.id as string;
   const { session } = useAuthStore();
+  const { toast } = useToast();
   const [appraisal, setAppraisal] = useState<AppraisalSummary | null>(null);
   const [items, setItems] = useState<EditableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -53,7 +54,6 @@ function AppraisalEditPage() {
     async function loadAppraisal() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.appraisals.getById(appraisalId);
 
         if (active) {
@@ -77,11 +77,14 @@ function AppraisalEditPage() {
         }
       } catch (fetchError: any) {
         if (active) {
-          setError(
-            fetchError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              fetchError?.response?.data?.message ||
               fetchError?.message ||
               "Failed to load appraisal for editing",
-          );
+            variant: "error",
+          });
           setAppraisal(null);
         }
       } finally {
@@ -144,7 +147,6 @@ function AppraisalEditPage() {
 
     try {
       setSaving(true);
-      setError(null);
       const response = await api.appraisals.update(appraisalId, {
         items: items.map((item) => ({
           id: item.id,
@@ -159,11 +161,14 @@ function AppraisalEditPage() {
       setLastSavedAt(new Date().toISOString());
       setIsDirty(false);
     } catch (saveError: any) {
-      setError(
-        saveError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          saveError?.response?.data?.message ||
           saveError?.message ||
           "Failed to save draft",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -223,23 +228,8 @@ function AppraisalEditPage() {
     );
   }
 
-  if (error && !appraisal) {
-    return (
-      <AppShell role={role}>
-        <EmptyState
-          title="Unable to open appraisal"
-          description={error}
-          action={
-            <Link
-              href="/appraisals"
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark"
-            >
-              Back to appraisals
-            </Link>
-          }
-        />
-      </AppShell>
-    );
+  if (!appraisal && !loading) {
+    return null;
   }
 
   if (!canEdit) {
@@ -306,12 +296,6 @@ function AppraisalEditPage() {
           </div>
         </div>
       </div>
-
-      {error ? (
-        <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
 
       <section className="mb-6 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">

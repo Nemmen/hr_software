@@ -5,10 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Loader2, Save, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import {
-  AppraisalReviewLayer,
-  type AppraisalReviewLayerProps,
-} from "@/components/ui/AppraisalReviewSection";
+import { AppraisalReviewLayer } from "@/components/ui/AppraisalReviewSection";
+import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
@@ -20,6 +18,37 @@ function fullEvidenceUrl(url: string) {
 }
 
 type ItemState = Record<string, { approvedPoints: number; remark?: string }>;
+
+function AccordionSection({
+  isOpen,
+  onToggle,
+  title,
+  description,
+  children,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-surface-2"
+      >
+        <div>
+          <h3 className="font-display text-base font-semibold text-text">{title}</h3>
+          <p className="mt-0.5 text-xs text-text-2">{description}</p>
+        </div>
+        {isOpen ? <ChevronUp className="h-5 w-5 shrink-0 text-text-3" /> : <ChevronDown className="h-5 w-5 shrink-0 text-text-3" />}
+      </button>
+      {isOpen && <div className="border-t border-border p-5">{children}</div>}
+    </section>
+  );
+}
 
 function HRReviewDetail() {
   const params = useParams();
@@ -34,14 +63,13 @@ function HRReviewDetail() {
     }
   }, [session, router]);
 
+  const { toast } = useToast();
   const [appraisal, setAppraisal] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [itemState, setItemState] = useState<ItemState>({});
 
   useEffect(() => {
@@ -66,9 +94,12 @@ function HRReviewDetail() {
         setItemState(initial);
       } catch (err: any) {
         if (active)
-          setError(
-            err?.response?.data?.message || err?.message || "Failed to load",
-          );
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message || err?.message || "Failed to load",
+            variant: "error",
+          });
       } finally {
         if (active) setLoading(false);
       }
@@ -78,6 +109,9 @@ function HRReviewDetail() {
       active = false;
     };
   }, [id]);
+
+  const hodAdditionalPoints: number = appraisal?.additionalPoints ?? 0;
+  const hodAdditionalPointsRemark: string | null = appraisal?.additionalPointsRemark ?? null;
 
   const totalFacultyPoints = useMemo(
     () =>
@@ -93,8 +127,8 @@ function HRReviewDetail() {
       (appraisal?.items || []).reduce(
         (s: number, it: any) => s + (it.hodApprovedPoints ?? it.facultyPoints),
         0,
-      ),
-    [appraisal],
+      ) + hodAdditionalPoints,
+    [appraisal, hodAdditionalPoints],
   );
 
   const totalCommitteeApproved = useMemo(
@@ -106,8 +140,8 @@ function HRReviewDetail() {
             it.hodApprovedPoints ??
             it.facultyPoints),
         0,
-      ),
-    [appraisal],
+      ) + hodAdditionalPoints,
+    [appraisal, hodAdditionalPoints],
   );
 
   const totalApproved = useMemo(
@@ -115,9 +149,16 @@ function HRReviewDetail() {
       Object.values(itemState).reduce(
         (s: number, it: any) => s + Number(it.approvedPoints || 0),
         0,
-      ),
-    [itemState],
+      ) + hodAdditionalPoints,
+    [itemState, hodAdditionalPoints],
   );
+
+  function hrIncrement(points: number) {
+    if (points < 16) return 5;
+    if (points < 30) return 8;
+    if (points < 45) return 10;
+    return 15;
+  }
 
   const canEdit = appraisal?.status === "HR_FINALIZED";
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -129,31 +170,6 @@ function HRReviewDetail() {
 
   function toggleSection(key: string) {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  function AccordionSection({ sectionKey, title, description, children }: {
-    sectionKey: string;
-    title: string;
-    description: string;
-    children: React.ReactNode;
-  }) {
-    const isOpen = openSections[sectionKey] ?? true;
-    return (
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-        <button
-          type="button"
-          onClick={() => toggleSection(sectionKey)}
-          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-surface-2"
-        >
-          <div>
-            <h3 className="font-display text-base font-semibold text-text">{title}</h3>
-            <p className="mt-0.5 text-xs text-text-2">{description}</p>
-          </div>
-          {isOpen ? <ChevronUp className="h-5 w-5 shrink-0 text-text-3" /> : <ChevronDown className="h-5 w-5 shrink-0 text-text-3" />}
-        </button>
-        {isOpen && <div className="border-t border-border p-5">{children}</div>}
-      </section>
-    );
   }
 
   function updateItem(
@@ -170,13 +186,17 @@ function HRReviewDetail() {
     if (!rejectReason.trim()) return;
     try {
       setRejecting(true);
-      setError(null);
       await api.hr.rejectAppraisal(id, rejectReason.trim());
       setRejectDialogOpen(false);
-      setMessage("Appraisal rejected.");
+      toast({ title: "Success", description: "Appraisal rejected.", variant: "success" });
       setTimeout(() => router.push("/hr-review"), 1000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to reject");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to reject",
+        variant: "error",
+      });
     } finally {
       setRejecting(false);
     }
@@ -209,19 +229,31 @@ function HRReviewDetail() {
         return false;
       });
       if (missing) {
-        setError("Please provide remarks for all deductions");
+        toast({
+          title: "Error",
+          description: "Please provide remarks for all deductions",
+          variant: "error",
+        });
         return;
       }
     }
 
     try {
       setSaving(true);
-      setError(null);
       await api.hr.submitReview(id, { items });
-      setMessage("HR review submitted successfully");
+      toast({
+        title: "Success",
+        description: "HR review submitted successfully",
+        variant: "success",
+      });
       setTimeout(() => router.push("/hr-review"), 1000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Submit failed");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Submit failed",
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -302,12 +334,16 @@ function HRReviewDetail() {
           <p className="mt-2 text-2xl font-bold text-text">
             {totalCommitteeApproved}
           </p>
+          {hodAdditionalPoints > 0 && (
+            <p className="mt-0.5 text-xs text-text-3">incl. {hodAdditionalPoints} HOD remarks</p>
+          )}
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
             HR Final
           </p>
           <p className="mt-2 text-2xl font-bold text-brand">{totalApproved}</p>
+          <p className="mt-0.5 text-xs text-text-3">{hrIncrement(totalApproved)}% increment</p>
         </div>
       </div>
 
@@ -393,66 +429,97 @@ function HRReviewDetail() {
         {/* Main Content - Review Layers */}
         <div className="space-y-4">
           {/* Faculty Claimed */}
-          <AccordionSection sectionKey="faculty" title="Faculty Claimed" description="Points selected by faculty member in their appraisal submission">
+          <AccordionSection isOpen={openSections["faculty"] ?? true} onToggle={() => toggleSection("faculty")} title="Faculty Claimed" description="Points selected by faculty member in their appraisal submission">
             <AppraisalReviewLayer
               title="Faculty Claimed"
               items={appraisal.items.map((it: any, idx: number) => ({
                 itemId: it.id,
                 heading: `${idx + 1}. ${it.heading ?? it.key}`,
+                selectedLabel: it.selectedLabel || null,
                 approvedPoints: it.facultyPoints,
                 evidence:
                   Array.isArray(it.evidence) && it.evidence.length > 0
-                    ? it.evidence.map((e: any) => ({ url: fullEvidenceUrl(e.url), fileName: e.fileName }))
+                    ? it.evidence.map((e: any) => ({
+                        url: fullEvidenceUrl(e.url ?? e.viewUrl ?? e.directUrl ?? ""),
+                        fileName: e.fileName,
+                      }))
                     : undefined,
               }))}
             />
           </AccordionSection>
 
           {/* HOD Evaluation */}
-          <AccordionSection sectionKey="hod" title="HOD Evaluation" description="Points approved by Head of Department with remarks">
+          <AccordionSection isOpen={openSections["hod"] ?? true} onToggle={() => toggleSection("hod")} title="HOD Evaluation" description="Points approved by Head of Department with remarks">
             <AppraisalReviewLayer
               title="HOD Evaluation"
-              items={appraisal.items.map((it: any, idx: number) => ({
-                itemId: it.id,
-                heading: `${idx + 1}. ${it.heading ?? it.key}`,
-                approvedPoints: it.hodApprovedPoints ?? it.facultyPoints,
-                previousPoints: it.facultyPoints,
-                remark: it.hodRemark,
-                reviewer: "HOD",
-              }))}
+              items={[
+                ...appraisal.items.map((it: any, idx: number) => ({
+                  itemId: it.id,
+                  heading: `${idx + 1}. ${it.heading ?? it.key}`,
+                  approvedPoints: it.hodApprovedPoints ?? it.facultyPoints,
+                  previousPoints: it.facultyPoints,
+                  remark: it.hodRemark,
+                  reviewer: "HOD",
+                })),
+                ...(hodAdditionalPoints > 0 ? [{
+                  itemId: "hod-remarks-xiii",
+                  heading: `${appraisal.items.length + 1}. XIII. HOD's Remarks`,
+                  approvedPoints: hodAdditionalPoints,
+                  remark: hodAdditionalPointsRemark,
+                  reviewer: "HOD",
+                }] : []),
+              ]}
             />
           </AccordionSection>
 
           {/* Committee Evaluation */}
-          <AccordionSection sectionKey="committee" title="Committee Evaluation" description="Points approved by committee members with remarks">
+          <AccordionSection isOpen={openSections["committee"] ?? true} onToggle={() => toggleSection("committee")} title="Committee Evaluation" description="Points approved by committee members with remarks">
             <AppraisalReviewLayer
               title="Committee Evaluation"
-              items={appraisal.items.map((it: any, idx: number) => ({
-                itemId: it.id,
-                heading: `${idx + 1}. ${it.heading ?? it.key}`,
-                approvedPoints: it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
-                previousPoints: it.hodApprovedPoints ?? it.facultyPoints,
-                remark: it.committeeRemark,
-                reviewer: "Committee",
-              }))}
+              items={[
+                ...appraisal.items.map((it: any, idx: number) => ({
+                  itemId: it.id,
+                  heading: `${idx + 1}. ${it.heading ?? it.key}`,
+                  approvedPoints: it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
+                  previousPoints: it.hodApprovedPoints ?? it.facultyPoints,
+                  remark: it.committeeRemark,
+                  reviewer: "Committee",
+                })),
+                ...(hodAdditionalPoints > 0 ? [{
+                  itemId: "hod-remarks-xiii-committee",
+                  heading: `${appraisal.items.length + 1}. XIII. HOD's Remarks`,
+                  approvedPoints: hodAdditionalPoints,
+                  remark: hodAdditionalPointsRemark,
+                  reviewer: "HOD",
+                }] : []),
+              ]}
             />
           </AccordionSection>
 
           {/* HR Final Review */}
-          <AccordionSection sectionKey="hr" title="HR Final Review" description={canEdit ? "Review and finalize points for this appraisal cycle" : "Points approved by HR"}>
+          <AccordionSection isOpen={openSections["hr"] ?? true} onToggle={() => toggleSection("hr")} title="HR Final Review" description={canEdit ? "Review and finalize points for this appraisal cycle" : "Points approved by HR"}>
             <AppraisalReviewLayer
               title="HR Final Review"
               isCurrentReview={canEdit}
-              items={appraisal.items.map((it: any, idx: number) => ({
-                itemId: it.id,
-                heading: `${idx + 1}. ${it.heading ?? it.key}`,
-                approvedPoints: canEdit
-                  ? itemState[it.id]?.approvedPoints ?? 0
-                  : it.hrApprovedPoints ?? it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
-                previousPoints: it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
-                remark: canEdit ? itemState[it.id]?.remark || "" : it.hrRemark || it.committeeRemark || "",
-                reviewer: "HR",
-              }))}
+              items={[
+                ...appraisal.items.map((it: any, idx: number) => ({
+                  itemId: it.id,
+                  heading: `${idx + 1}. ${it.heading ?? it.key}`,
+                  approvedPoints: canEdit
+                    ? itemState[it.id]?.approvedPoints ?? 0
+                    : it.hrApprovedPoints ?? it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
+                  previousPoints: it.committeeApprovedPoints ?? it.hodApprovedPoints ?? it.facultyPoints,
+                  remark: canEdit ? itemState[it.id]?.remark || "" : it.hrRemark || it.committeeRemark || "",
+                  reviewer: "HR",
+                })),
+                ...(hodAdditionalPoints > 0 ? [{
+                  itemId: "hod-remarks-xiii-hr",
+                  heading: `${appraisal.items.length + 1}. XIII. HOD's Remarks`,
+                  approvedPoints: hodAdditionalPoints,
+                  remark: hodAdditionalPointsRemark,
+                  reviewer: "HOD",
+                }] : []),
+              ]}
               itemInputs={
                 canEdit
                   ? appraisal.items.reduce((acc: any, it: any) => {
@@ -499,8 +566,14 @@ function HRReviewDetail() {
       {/* Action Footer */}
       <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          {error && <div className="text-sm text-danger">{error}</div>}
-          {message && <div className="text-sm text-success">{message}</div>}
+          {canEdit && (
+            <p className="text-sm text-text-2">
+              HR total: <span className="font-semibold text-text">{totalApproved}</span>
+              {hodAdditionalPoints > 0 && <span className="ml-1 text-xs text-text-3">(incl. {hodAdditionalPoints} HOD remarks)</span>}
+              {" · "}
+              Increment: <span className="font-semibold text-brand">{hrIncrement(totalApproved)}%</span>
+            </p>
+          )}
           {!canEdit && (
             <div className="text-sm text-text-2">
               This appraisal is fully approved. HR can view it only.
@@ -529,7 +602,7 @@ function HRReviewDetail() {
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Forward to Committee
+              Forward to Admin
             </button>
           </div>
         ) : null}

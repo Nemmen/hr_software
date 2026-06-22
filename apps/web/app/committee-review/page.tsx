@@ -7,6 +7,7 @@ import { AlertCircle, CheckCircle2, Eye, Loader2, Search } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -50,10 +51,10 @@ function getStatusBadge(status: string) {
 function CommitteeDashboardPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [appraisals, setAppraisals] = useState<AppraisalForReview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [cycleToggle, setCycleToggle] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -65,25 +66,25 @@ function CommitteeDashboardPage() {
     async function loadAppraisals() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.committee.getTeamAppraisals(
           cycleToggle === "all" ? "all" : undefined,
         );
         if (active) {
-          setAppraisals(
-            response.data.map((a) => ({
-              ...a,
-              totalSelectedPoints: (a as any).items?.reduce((s: number, i: any) => s + (i.points ?? 0), 0) ?? 0,
-              itemsCount: (a as any).items?.length ?? 0,
-            })) as AppraisalForReview[],
-          );
+          setAppraisals(response.data as unknown as AppraisalForReview[]);
           setDeptFilter("");
           setCycleFilter("");
           setSearch("");
         }
       } catch (loadError: any) {
         if (active)
-          setError(loadError?.response?.data?.message || loadError?.message || "Failed to load appraisals for review");
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
+              loadError?.message ||
+              "Failed to load appraisals for review",
+            variant: "error",
+          });
       } finally {
         if (active) setLoading(false);
       }
@@ -130,7 +131,7 @@ function CommitteeDashboardPage() {
               </div>
               <div className="rounded-lg bg-bg p-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Total Points</p>
-                <p className="mt-1 text-sm font-medium text-text">{appraisal.totalSelectedPoints}</p>
+                <p className="mt-1 text-sm font-medium text-text">{appraisal.finalScore}</p>
               </div>
               <div className="rounded-lg bg-bg p-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Status</p>
@@ -202,12 +203,6 @@ function CommitteeDashboardPage() {
           </div>
         </div>
       </div>
-
-      {error && (
-        <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" /><div>{error}</div></div>
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-6">

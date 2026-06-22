@@ -18,6 +18,9 @@ const nextConfig = {
       { protocol: "https", hostname: "drive.google.com" },
       { protocol: "https", hostname: "drive.usercontent.google.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      // API-proxied Drive images (profile photos, etc.)
+      { protocol: "http", hostname: "localhost" },
+      { protocol: "https", hostname: "hr-software-api.vercel.app" },
     ],
     formats: ["image/avif", "image/webp"],
   },

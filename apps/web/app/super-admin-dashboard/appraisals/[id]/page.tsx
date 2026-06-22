@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -54,6 +55,7 @@ function SuperAdminAppraisalDetail() {
   const id = params.id as string;
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!session) {
@@ -64,8 +66,6 @@ function SuperAdminAppraisalDetail() {
   const [appraisal, setAppraisal] = useState<AppraisalDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [adjustedPercent, setAdjustedPercent] = useState<number | undefined>();
   const [remark, setRemark] = useState("");
 
@@ -83,9 +83,12 @@ function SuperAdminAppraisalDetail() {
         setRemark(response.data?.superAdminRemark || "");
       } catch (err: any) {
         if (active)
-          setError(
-            err?.response?.data?.message || err?.message || "Failed to load",
-          );
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message || err?.message || "Failed to load",
+            variant: "error",
+          });
       } finally {
         if (active) setLoading(false);
       }
@@ -107,8 +110,6 @@ function SuperAdminAppraisalDetail() {
 
     try {
       setSaving(true);
-      setError(null);
-      setMessage(null);
 
       await api.superAdmin.approve(appraisal.id, {
         adjustedPercent:
@@ -119,14 +120,21 @@ function SuperAdminAppraisalDetail() {
         remark: remark.trim() || undefined,
       });
 
-      setMessage("Appraisal approved successfully!");
+      toast({
+        title: "Success",
+        description: "Appraisal approved successfully!",
+        variant: "success",
+      });
       setTimeout(() => {
         router.push("/super-admin-dashboard/appraisals");
       }, 2000);
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message || err?.message || "Failed to approve",
-      );
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to approve",
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -176,18 +184,6 @@ function SuperAdminAppraisalDetail() {
       </div>
 
       <div className="mx-auto max-w-6xl space-y-6">
-        {error && (
-          <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-            {error}
-          </div>
-        )}
-
-        {message && (
-          <div className="rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-            {message}
-          </div>
-        )}
-
         {/* Faculty & Cycle Info */}
         <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
           <div className="grid gap-6 md:grid-cols-2">
@@ -265,7 +261,7 @@ function SuperAdminAppraisalDetail() {
               Current Status
             </p>
             <p className="mt-2 inline-block rounded-full bg-warning-bg px-3 py-1 text-xs font-semibold text-warning">
-              {appraisal.status === "SUPER_ADMIN_PENDING"
+              {(appraisal.status === "ADMIN_REVIEW" || appraisal.status === "SUPER_ADMIN_PENDING")
                 ? "Pending Approval"
                 : "Approved"}
             </p>
@@ -318,7 +314,7 @@ function SuperAdminAppraisalDetail() {
         </div>
 
         {/* Approval Controls */}
-        {appraisal.status === "SUPER_ADMIN_PENDING" && (
+        {(appraisal.status === "ADMIN_REVIEW" || appraisal.status === "SUPER_ADMIN_PENDING") && (
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
               Approval Actions

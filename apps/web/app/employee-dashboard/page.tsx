@@ -16,6 +16,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -105,9 +106,9 @@ function EmployeeDashboardContent() {
   const { session } = useAuthStore();
   const router = useRouter();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [profile, setProfile] = useState<FacultyProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -115,7 +116,6 @@ function EmployeeDashboardContent() {
     async function loadProfile() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.faculty.getProfile();
 
         if (!active) return;
@@ -128,11 +128,14 @@ function EmployeeDashboardContent() {
         setProfile(response.data);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load employee dashboard",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -160,14 +163,6 @@ function EmployeeDashboardContent() {
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm">Loading employee dashboard...</span>
         </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-        {error}
       </div>
     );
   }

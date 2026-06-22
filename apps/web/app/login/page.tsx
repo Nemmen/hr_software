@@ -12,13 +12,13 @@ import { api } from "@/lib/api";
 import { resolvePostLoginPath } from "@/lib/faculty-access";
 import { getPrimaryRole, getRoleHomePath } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
+import { useToast } from "@/components/ui/Toast";
 
 export default function LoginPage() {
   const router = useRouter();
   const { session, isHydrated } = useAuthStore();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [createdMessage, setCreatedMessage] = useState(false);
 
   const {
     register,
@@ -35,7 +35,13 @@ export default function LoginPage() {
     }
 
     const params = new URLSearchParams(window.location.search);
-    setCreatedMessage(params.get("created") === "1");
+    if (params.get("created") === "1") {
+      toast({
+        title: "Account created",
+        description: "Please sign in with your new credentials.",
+        variant: "success",
+      });
+    }
   }, [isHydrated]);
 
   useEffect(() => {
@@ -60,8 +66,6 @@ export default function LoginPage() {
   }, [isHydrated, router, session]);
 
   const onSubmit = async (values: LoginInput) => {
-    setServerError(null);
-
     try {
       const response = await api.auth.login(values);
       useAuthStore.getState().setSession({
@@ -76,7 +80,11 @@ export default function LoginPage() {
       }
       router.push(nextPath);
     } catch {
-      setServerError("Invalid email or password. Please try again.");
+      toast({
+        title: "Error",
+        description: "Invalid email or password. Please try again.",
+        variant: "error",
+      });
     }
   };
 
@@ -145,12 +153,6 @@ export default function LoginPage() {
             </h1>
             <p className="mt-1 text-sm text-text-2">Sign in to your account</p>
           </div>
-
-          {createdMessage ? (
-            <div className="rounded-lg border border-success/20 bg-success-bg p-3 text-sm text-success">
-              Account created. Please sign in with your new credentials.
-            </div>
-          ) : null}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
@@ -226,12 +228,6 @@ export default function LoginPage() {
                 Forgot password?
               </a>
             </div>
-
-            {serverError ? (
-              <div className="rounded-lg border border-danger/20 bg-danger-bg p-3 text-sm text-danger">
-                {serverError}
-              </div>
-            ) : null}
 
             <button
               type="submit"

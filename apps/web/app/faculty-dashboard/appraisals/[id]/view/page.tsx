@@ -14,6 +14,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api, type FacultyAppraisalDetail } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { toDriveViewerUrl } from "@/lib/utils/drive";
@@ -73,12 +74,12 @@ function ViewSubmittedAppraisalPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
   const appraisalId = params.id as string;
+  const { toast } = useToast();
 
   const [appraisal, setAppraisal] = useState<FacultyAppraisalDetail | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -86,7 +87,6 @@ function ViewSubmittedAppraisalPage() {
     async function loadAppraisal() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.faculty.getAppraisalDetails(appraisalId);
 
         if (active) {
@@ -94,11 +94,14 @@ function ViewSubmittedAppraisalPage() {
         }
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load appraisal",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -125,17 +128,8 @@ function ViewSubmittedAppraisalPage() {
     );
   }
 
-  if (error || !appraisal) {
-    return (
-      <AppShell role={role}>
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-            <div>{error || "Appraisal not found"}</div>
-          </div>
-        </div>
-      </AppShell>
-    );
+  if (!appraisal) {
+    return null;
   }
 
   const getStatusBadge = (status: string) => {

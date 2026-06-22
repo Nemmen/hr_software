@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { withAuth } from "@/components/auth/withAuth";
 import {
   api,
@@ -45,11 +46,11 @@ const EMPTY_NEW_DEPT = {
 function HrDepartmentsPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [departments, setDepartments] = useState<HrDepartmentSummary[]>([]);
   const [users, setUsers] = useState<HrUserSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createMode, setCreateMode] = useState<CreateMode>("new-hod");
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -60,7 +61,6 @@ function HrDepartmentsPage() {
   async function loadData() {
     try {
       setLoading(true);
-      setError(null);
       const [deptsRes, usersRes] = await Promise.all([
         api.hr.getDepartments(),
         api.hr.getUsers(),
@@ -68,7 +68,12 @@ function HrDepartmentsPage() {
       setDepartments(deptsRes.data ?? []);
       setUsers(usersRes.data ?? []);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to load");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to load",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -88,15 +93,17 @@ function HrDepartmentsPage() {
         !newDept.hodEmail.trim() ||
         !newDept.hodPassword.trim())
     ) {
-      setError(
-        "All HOD credential fields are required when creating a new HOD.",
-      );
+      toast({
+        title: "Error",
+        description:
+          "All HOD credential fields are required when creating a new HOD.",
+        variant: "error",
+      });
       return;
     }
 
     try {
       setSaving(true);
-      setError(null);
 
       if (createMode === "new-hod") {
         await api.hr.createDepartment({
@@ -121,11 +128,14 @@ function HrDepartmentsPage() {
       setShowCreate(false);
       await loadData();
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
           err?.message ||
           "Failed to create department",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -135,7 +145,6 @@ function HrDepartmentsPage() {
     if (!editing) return;
     try {
       setSaving(true);
-      setError(null);
       await api.hr.updateDepartment(editing.id, {
         name: editing.name.trim(),
         code: editing.code.trim() || undefined,
@@ -144,11 +153,14 @@ function HrDepartmentsPage() {
       setEditing(null);
       await loadData();
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
           err?.message ||
           "Failed to update department",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -188,12 +200,6 @@ function HrDepartmentsPage() {
           </button>
         }
       />
-
-      {error && (
-        <div className="mb-4 rounded-xl border border-danger/20 bg-danger-bg p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
 
       {/* Create form */}
       {showCreate && (

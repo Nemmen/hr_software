@@ -6,6 +6,7 @@ import { RefreshCw, ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { withAuth } from "@/components/auth/withAuth";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { api, type AppraisalSummary } from "@/lib/api";
@@ -21,9 +22,9 @@ type AppraisalCard = AppraisalSummary & {
 
 function AppraisalsPage() {
   const { session } = useAuthStore();
+  const { toast } = useToast();
   const [appraisals, setAppraisals] = useState<AppraisalCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeCycleInfo, setActiveCycleInfo] = useState<{
     hasRequest: boolean;
     cycleActive?: boolean;
@@ -39,7 +40,6 @@ function AppraisalsPage() {
   async function loadAppraisals() {
     try {
       setLoading(true);
-      setError(null);
 
       // Load faculty appraisal status to get active cycle info
       try {
@@ -92,11 +92,14 @@ function AppraisalsPage() {
           ),
       );
     } catch (fetchError: any) {
-      setError(
-        fetchError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          fetchError?.response?.data?.message ||
           fetchError?.message ||
           "Failed to load appraisals",
-      );
+        variant: "error",
+      });
       setAppraisals([]);
     } finally {
       setLoading(false);
@@ -231,11 +234,7 @@ function AppraisalsPage() {
         </div>
       )}
 
-      {error ? (
-        <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
+
 
       {loading ? (
         <div className="space-y-4">

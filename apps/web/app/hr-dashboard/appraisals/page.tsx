@@ -7,6 +7,7 @@ import { CheckCircle2, Clock, Eye, Loader2, Search } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -31,10 +32,10 @@ function getStatusBadge(status: string) {
 function HrAppraisalsPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [appraisals, setAppraisals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [cycleToggle, setCycleToggle] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -46,7 +47,6 @@ function HrAppraisalsPage() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.hr.getTeamAppraisals(
           cycleToggle === "all" ? "all" : undefined,
         );
@@ -57,9 +57,12 @@ function HrAppraisalsPage() {
         setSearch("");
       } catch (err: any) {
         if (active)
-          setError(
-            err?.response?.data?.message || err?.message || "Failed to load",
-          );
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message || err?.message || "Failed to load",
+            variant: "error",
+          });
       } finally {
         if (active) setLoading(false);
       }
@@ -186,10 +189,6 @@ function HrAppraisalsPage() {
         </div>
       ) : (
         <>
-          {error ? (
-            <div className="mb-4 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">{error}</div>
-          ) : null}
-
           {filtered.length === 0 ? (
             <div className="rounded-2xl border border-border bg-surface p-12 text-center">
               <CheckCircle2 className="mx-auto h-8 w-8 text-text-3" />

@@ -22,6 +22,7 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { withAuth } from "@/components/auth/withAuth";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { DocumentUploadCard } from "@/components/upload/DocumentUploadCard";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
@@ -130,6 +131,7 @@ function FacultyProfileSection() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session } = useAuthStore();
+  const { toast } = useToast();
 
   const [profile, setProfile] = useState<FacultyProfile | null>(null);
   const [departments, setDepartments] = useState<DepartmentSummary[]>([]);
@@ -137,9 +139,6 @@ function FacultyProfileSection() {
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
-  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const role = getPrimaryRole(session?.user.roles ?? []);
 
@@ -209,7 +208,6 @@ function FacultyProfileSection() {
     async function loadFacultyProfile() {
       try {
         setLoading(true);
-        setError(null);
 
         const [profileResponse, departmentsResponse] = await Promise.all([
           api.faculty.getProfile(),
@@ -246,11 +244,14 @@ function FacultyProfileSection() {
         });
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load faculty profile",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -328,17 +329,21 @@ function FacultyProfileSection() {
     }
 
     if (!profilePictureConfig.accept.includes(file.type)) {
-      setImageUploadError(
-        `Only ${profilePictureConfig.accept.join(
-          ", ",
-        )} files are allowed for profile pictures.`,
-      );
+      toast({
+        title: "Error",
+        description: `Only ${profilePictureConfig.accept.join(", ")} files are allowed for profile pictures.`,
+        variant: "error",
+      });
       event.target.value = "";
       return;
     }
 
     if (file.size > profilePictureConfig.maxSizeBytes) {
-      setImageUploadError(profilePictureConfig.helperText);
+      toast({
+        title: "Error",
+        description: profilePictureConfig.helperText,
+        variant: "error",
+      });
       event.target.value = "";
       return;
     }
@@ -346,9 +351,6 @@ function FacultyProfileSection() {
     try {
       setImageUploading(true);
       setImageUploadProgress(0);
-      setImageUploadError(null);
-      setError(null);
-      setMessage(null);
 
       const response = await api.uploads.uploadDocument(
         "faculty-profile",
@@ -363,14 +365,20 @@ function FacultyProfileSection() {
       );
 
       mergeUploadedDocument(response.data);
-      setMessage("Profile image uploaded successfully.");
+      toast({
+        title: "Success",
+        description: "Profile image uploaded successfully.",
+        variant: "success",
+      });
     } catch (uploadError: any) {
-      const uploadMessage =
-        uploadError?.response?.data?.message ||
-        uploadError?.message ||
-        "Failed to upload profile image";
-      setImageUploadError(uploadMessage);
-      setError(uploadMessage);
+      toast({
+        title: "Error",
+        description:
+          uploadError?.response?.data?.message ||
+          uploadError?.message ||
+          "Failed to upload profile image",
+        variant: "error",
+      });
     } finally {
       setImageUploading(false);
       setImageUploadProgress(0);
@@ -381,8 +389,6 @@ function FacultyProfileSection() {
   const onSubmit = async (values: FacultyProfileInput) => {
     try {
       setSaving(true);
-      setError(null);
-      setMessage(null);
 
       const payload: FacultyProfilePayload = {
         ...values,
@@ -398,13 +404,20 @@ function FacultyProfileSection() {
 
       const response = await api.faculty.saveProfile(payload);
       setProfile(response.data);
-      setMessage("Faculty profile saved successfully.");
+      toast({
+        title: "Success",
+        description: "Faculty profile saved successfully.",
+        variant: "success",
+      });
     } catch (saveError: any) {
-      setError(
-        saveError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          saveError?.response?.data?.message ||
           saveError?.message ||
           "Failed to save faculty profile",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -443,16 +456,6 @@ function FacultyProfileSection() {
           subtitle="Your account details. Faculty profiling is managed separately by faculty members."
         />
         <div className="space-y-6">
-          {error && (
-            <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div className="rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-              {message}
-            </div>
-          )}
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
               <div className="rounded-2xl bg-brand-light p-3 text-brand">
@@ -559,18 +562,6 @@ function FacultyProfileSection() {
           </div>
         ) : null}
 
-        {error ? (
-          <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-            {error}
-          </div>
-        ) : null}
-
-        {message ? (
-          <div className="rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-            {message}
-          </div>
-        ) : null}
-
         <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
             <div className="flex items-center gap-3">
@@ -641,12 +632,6 @@ function FacultyProfileSection() {
                     max={100}
                   />
                 </div>
-              ) : null}
-
-              {imageUploadError ? (
-                <p className="mt-3 rounded-xl border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
-                  {imageUploadError}
-                </p>
               ) : null}
 
               <div className="mt-4 grid gap-3 text-sm text-text-2">

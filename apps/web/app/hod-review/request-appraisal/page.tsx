@@ -15,6 +15,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -41,6 +42,7 @@ type PendingUpload = {
 function HodSelfRequestPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [policy, setPolicy] = useState<FacultyAppraisalPolicy | null>(null);
   const [status, setStatus] = useState<FacultyAppraisalRequestStatus | null>(
     null,
@@ -50,8 +52,6 @@ function HodSelfRequestPage() {
   >({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(
     null,
   );
@@ -63,7 +63,6 @@ function HodSelfRequestPage() {
     async function loadData() {
       try {
         setLoading(true);
-        setError(null);
         const [policyResponse, statusResponse] = await Promise.all([
           api.faculty.getAppraisalPolicy(),
           api.faculty.getAppraisalStatus(),
@@ -90,11 +89,14 @@ function HodSelfRequestPage() {
         setCriteriaState(initialState);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load self appraisal form",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -178,17 +180,23 @@ function HodSelfRequestPage() {
   async function uploadEvidence(criterionKey: string, file: File) {
     const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
     if (!allowedTypes.includes(file.type)) {
-      setError("Only JPG, PNG, and PDF evidence files are allowed.");
+      toast({
+        title: "Error",
+        description: "Only JPG, PNG, and PDF evidence files are allowed.",
+        variant: "error",
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("Evidence file size must be 5MB or less.");
+      toast({
+        title: "Error",
+        description: "Evidence file size must be 5MB or less.",
+        variant: "error",
+      });
       return;
     }
 
-    setError(null);
-    setMessage(null);
     setCriteriaState((current) => ({
       ...current,
       [criterionKey]: {
@@ -218,11 +226,14 @@ function HodSelfRequestPage() {
           uploading: false,
         },
       }));
-      setError(
-        uploadError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          uploadError?.response?.data?.message ||
           uploadError?.message ||
           "Failed to upload evidence",
-      );
+        variant: "error",
+      });
     }
   }
 
@@ -233,8 +244,6 @@ function HodSelfRequestPage() {
 
     try {
       setSubmitting(true);
-      setError(null);
-      setMessage(null);
 
       const items = policy.criteria.map((criterion) => ({
         criterionKey: criterion.key,
@@ -246,13 +255,20 @@ function HodSelfRequestPage() {
       await api.faculty.submitAppraisalRequest({ items });
       const statusResponse = await api.faculty.getAppraisalStatus();
       setStatus(statusResponse.data);
-      setMessage("Self appraisal request submitted successfully.");
+      toast({
+        title: "Success",
+        description: "Self appraisal request submitted successfully.",
+        variant: "success",
+      });
     } catch (submitError: any) {
-      setError(
-        submitError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          submitError?.response?.data?.message ||
           submitError?.message ||
           "Failed to submit self appraisal request",
-      );
+        variant: "error",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -354,18 +370,6 @@ function HodSelfRequestPage() {
         </section>
       ) : (
         <>
-          {error ? (
-            <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
-
-          {message ? (
-            <div className="mb-5 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-              {message}
-            </div>
-          ) : null}
-
           <div className="mb-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
@@ -456,7 +460,9 @@ function HodSelfRequestPage() {
                           )}
                           {state?.uploading
                             ? "Uploading..."
-                            : "Upload evidence"}
+                            : state?.evidence && state.evidence.length > 0
+                              ? "Add another Evidence"
+                              : "Upload evidence"}
                           <input
                             type="file"
                             accept="image/jpeg,image/png,application/pdf"

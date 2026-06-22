@@ -10,7 +10,6 @@ import {
   Users,
   BarChart3,
   FileText,
-  AlertCircle,
   Loader2,
   CheckCircle2,
   Clock,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { getPrimaryRole } from "@/lib/utils/routing";
 
 interface SystemStats {
@@ -56,11 +56,11 @@ export default function SuperAdminDashboard() {
   const router = useRouter();
   const { session, isHydrated } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<UserData[]>([]);
   const [logs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -84,7 +84,6 @@ export default function SuperAdminDashboard() {
   async function fetchAdminData() {
     try {
       setLoading(true);
-      setError(null);
 
       const res = await apiClient.get("/admin/dashboard");
       setStats(res.data.data.stats);
@@ -97,7 +96,7 @@ export default function SuperAdminDashboard() {
         message,
         data: err?.response?.data,
       });
-      setError(message);
+      toast({ title: "Error", description: message, variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -137,32 +136,6 @@ export default function SuperAdminDashboard() {
     );
   }
 
-  if (error) {
-    return (
-      <AppShell role={role}>
-        <PageHeader
-          title="Super Admin Dashboard"
-          subtitle="System overview and user management"
-          actions={undefined}
-        />
-        <div className="rounded-lg border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium">{error}</p>
-              <button
-                onClick={fetchAdminData}
-                className="mt-2 text-sm font-medium underline"
-              >
-                Try again
-              </button>
-            </div>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
-
   return (
     <AppShell role={role}>
       <PageHeader
@@ -190,9 +163,11 @@ export default function SuperAdminDashboard() {
                 Appraisals Pending
               </p>
               <p className="mt-2 text-2xl font-bold text-warning">
-                {stats?.appraisalsByStatus?.find(
+                {(stats?.appraisalsByStatus?.find(
+                  (s) => s.status === "ADMIN_REVIEW",
+                )?._count ?? 0) + (stats?.appraisalsByStatus?.find(
                   (s) => s.status === "SUPER_ADMIN_PENDING",
-                )?._count ?? 0}
+                )?._count ?? 0)}
               </p>
               <p className="mt-1 text-xs text-text-2">
                 Awaiting super admin approval

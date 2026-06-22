@@ -11,6 +11,33 @@ import { writeAuditLog } from "../lib/audit";
 
 const router: express.Router = express.Router();
 
+function facultyIncrement(totalPoints: number) {
+  if (totalPoints < 16) return 5;
+  if (totalPoints < 30) return 8;
+  if (totalPoints < 45) return 10;
+  return 15;
+}
+
+function parseHodAdditionalPoints(hodRemarks: string | null): number {
+  if (!hodRemarks) return 0;
+  try {
+    const r = JSON.parse(hodRemarks);
+    return typeof r.additionalPoints === "number" ? r.additionalPoints : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function parseHodAdditionalPointsRemark(hodRemarks: string | null): string | null {
+  if (!hodRemarks) return null;
+  try {
+    const r = JSON.parse(hodRemarks);
+    return typeof r.additionalPointsRemark === "string" ? r.additionalPointsRemark : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseItemNotes(notes: string | null) {
   if (!notes) return {};
   try {
@@ -59,10 +86,11 @@ type HrAppraisalSummary = {
 };
 
 function mapHrAppraisal(appraisal: any): HrAppraisalSummary {
-  const totalSelectedPoints = appraisal.items.reduce(
-    (sum: number, item: { points: number }) => sum + item.points,
-    0,
-  );
+  // Use finalScore (set atomically by each reviewing stage and includes additionalPoints)
+  // Fall back to item.points sum only if finalScore hasn't been set yet
+  const totalSelectedPoints =
+    appraisal.finalScore ??
+    appraisal.items.reduce((sum: number, item: { points: number }) => sum + item.points, 0);
   const currentSalary = appraisal.user.facultyProfile?.currentSalary ?? 0;
   const superAdminApprovedPercent = appraisal.superAdminApprovedPercent ?? null;
 
@@ -316,6 +344,8 @@ router.get(
           items,
           finalScore: appraisal.finalScore,
           finalPercent: appraisal.finalPercent,
+          additionalPoints: parseHodAdditionalPoints(appraisal.hodRemarks),
+          additionalPointsRemark: parseHodAdditionalPointsRemark(appraisal.hodRemarks),
           superAdminApprovedPercent: appraisal.superAdminApprovedPercent,
           superAdminRemark: appraisal.superAdminRemark,
           committeeNotes: appraisal.committeeNotes,
@@ -424,10 +454,13 @@ router.put(
         }
       }
 
-      const totalApproved = parsed.items.reduce(
+      const itemApproved = parsed.items.reduce(
         (sum, it) => sum + it.approvedPoints,
         0,
       );
+      const hodAdditionalPoints = parseHodAdditionalPoints(appraisal.hodRemarks);
+      const totalApproved = itemApproved + hodAdditionalPoints;
+      const incrementPercent = facultyIncrement(totalApproved);
 
       for (const reviewed of parsed.items) {
         const existing = byId.get(reviewed.itemId);
@@ -459,6 +492,7 @@ router.put(
           data: {
             status: "ADMIN_REVIEW",
             finalScore: totalApproved,
+            finalPercent: incrementPercent,
           },
         }),
       ]);
@@ -468,13 +502,13 @@ router.put(
         action: "appraisal.hr.review.completed",
         resource: "Appraisal",
         resourceId: appraisalId,
-        meta: { totalApproved },
+        meta: { itemApproved, hodAdditionalPoints, totalApproved, incrementPercent },
       });
 
       res.json({
         success: true,
-        message: "Appraisal forwarded to Committee",
-        data: { appraisalId, totalApprovedPoints: totalApproved, forwardedStatus: "COMMITTEE_REVIEW" },
+        message: "Appraisal forwarded to Admin Review",
+        data: { appraisalId, totalApprovedPoints: totalApproved, incrementPercent, forwardedStatus: "ADMIN_REVIEW" },
       });
     } catch (error) {
       next(error);
@@ -553,12 +587,16 @@ router.get(
           lastName: true,
           departmentId: true,
           department: { select: { id: true, name: true } },
-          facultyProfile: {
+          facultyProfile: true,
+          documents: {
+            where: { deletedAt: null },
             select: {
-              currentSalary: true,
-              qualification: true,
-              totalExperience: true,
-              imageUrl: true,
+              id: true,
+              name: true,
+              module: true,
+              fieldKey: true,
+              viewUrl: true,
+              directUrl: true,
             },
           },
           roles: { select: { role: true } },

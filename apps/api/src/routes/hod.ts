@@ -43,13 +43,13 @@ function parseItemNotes(notes: string | null) {
 }
 
 function facultyIncrement(totalPoints: number) {
-  if (totalPoints <= 19) {
+  if (totalPoints < 16) {
     return 5;
   }
-  if (totalPoints <= 34) {
+  if (totalPoints < 30) {
     return 8;
   }
-  if (totalPoints <= 51) {
+  if (totalPoints < 45) {
     return 10;
   }
   return 15;
@@ -232,17 +232,25 @@ router.get(
       });
 
       const payload = appraisals.map((appraisal) => {
-        let totalSelectedPoints = 0;
-        for (const item of appraisal.items) {
+        const itemSum = appraisal.items.reduce((sum, item) => {
           try {
             const parsed = item.notes ? (JSON.parse(item.notes) as Record<string, unknown>) : null;
             const hodReview = parsed?.hodReview as Record<string, unknown> | undefined;
             const hodApproved = typeof hodReview?.approvedPoints === "number" ? hodReview.approvedPoints : null;
-            totalSelectedPoints += hodApproved ?? item.points;
+            return sum + (hodApproved ?? item.points);
           } catch {
-            totalSelectedPoints += item.points;
+            return sum + item.points;
           }
-        }
+        }, 0);
+        // Add HOD's remarks/additional points from hodRemarks JSON field
+        let hodAdditionalPoints = 0;
+        try {
+          const hodRemarks = appraisal.hodRemarks ? (JSON.parse(appraisal.hodRemarks) as Record<string, unknown>) : null;
+          if (typeof hodRemarks?.additionalPoints === "number") {
+            hodAdditionalPoints = hodRemarks.additionalPoints;
+          }
+        } catch { /* ignore */ }
+        const totalSelectedPoints = itemSum + hodAdditionalPoints;
         return {
           id: appraisal.id,
           status: appraisal.status,
@@ -785,6 +793,7 @@ router.get(
           status: true,
           submittedAt: true,
           finalScore: true,
+          hodRemarks: true,
           user: {
             select: {
               id: true,
@@ -803,17 +812,24 @@ router.get(
       });
 
       const payload = appraisals.map((appraisal) => {
-        let totalSelectedPoints = 0;
-        for (const item of appraisal.items) {
+        const itemSum = appraisal.items.reduce((sum, item) => {
           try {
             const parsed = item.notes ? (JSON.parse(item.notes) as Record<string, unknown>) : null;
             const hodReview = parsed?.hodReview as Record<string, unknown> | undefined;
             const hodApproved = typeof hodReview?.approvedPoints === "number" ? hodReview.approvedPoints : null;
-            totalSelectedPoints += hodApproved ?? item.points;
+            return sum + (hodApproved ?? item.points);
           } catch {
-            totalSelectedPoints += item.points;
+            return sum + item.points;
           }
-        }
+        }, 0);
+        let hodAdditionalPoints = 0;
+        try {
+          const hodRemarks = appraisal.hodRemarks ? (JSON.parse(appraisal.hodRemarks) as Record<string, unknown>) : null;
+          if (typeof hodRemarks?.additionalPoints === "number") {
+            hodAdditionalPoints = hodRemarks.additionalPoints;
+          }
+        } catch { /* ignore */ }
+        const totalSelectedPoints = itemSum + hodAdditionalPoints;
         return {
           id: appraisal.id,
           status: appraisal.status,
@@ -990,12 +1006,14 @@ router.put(
 
       // Only the final status update needs to be atomic
       if (isFinalSubmit) {
+        const incrementPercent = facultyIncrement(totalApproved);
         await prisma.$transaction([
           prisma.appraisal.update({
             where: { id: appraisalId },
             data: {
               status: "HR_FINALIZED",
               finalScore: totalApproved,
+              finalPercent: incrementPercent,
               committeeNotes: JSON.stringify({
                 overallRemark: parsed.overallRemark?.trim() || null,
                 additionalPoints: parsed.additionalPoints ?? 0,

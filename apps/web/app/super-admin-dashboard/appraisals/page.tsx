@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, Clock } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -17,10 +18,10 @@ function SuperAdminAppraislalsPage() {
   const router = useRouter();
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [appraisals, setAppraisals] = useState<AppraisalWithSalary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(
     "SUPER_ADMIN_PENDING",
   );
@@ -34,7 +35,6 @@ function SuperAdminAppraislalsPage() {
   const loadAppraisals = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       const response = await api.superAdmin.getAppraisals({
         status: statusFilter,
         departmentId: departmentFilter || undefined,
@@ -42,11 +42,14 @@ function SuperAdminAppraislalsPage() {
       });
       setAppraisals(response.data ?? []);
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
           err?.message ||
           "Failed to load appraisals",
-      );
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -88,7 +91,7 @@ function SuperAdminAppraislalsPage() {
   }
 
   const pendingCount = useMemo(
-    () => appraisals.filter((a) => a.status === "SUPER_ADMIN_PENDING").length,
+    () => appraisals.filter((a) => a.status === "ADMIN_REVIEW" || a.status === "SUPER_ADMIN_PENDING").length,
     [appraisals],
   );
 
@@ -243,12 +246,6 @@ function SuperAdminAppraislalsPage() {
         </div>
       ) : (
         <>
-          {error ? (
-            <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
-
           {appraisals.length === 0 ? (
             <div className="rounded-2xl border border-border bg-surface p-12 text-center shadow-sm">
               <Clock className="mx-auto h-8 w-8 text-text-3" />
@@ -320,7 +317,7 @@ function SuperAdminAppraislalsPage() {
 
                         {/* Status Badge */}
                         <div>
-                          {appraisal.status === "SUPER_ADMIN_PENDING" ? (
+                          {(appraisal.status === "ADMIN_REVIEW" || appraisal.status === "SUPER_ADMIN_PENDING") ? (
                             <span className="inline-flex items-center rounded-full bg-warning-bg px-3 py-1 text-xs font-semibold text-warning">
                               <Clock className="mr-1 h-3 w-3" />
                               Pending

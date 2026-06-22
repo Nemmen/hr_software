@@ -344,19 +344,18 @@ router.get(
     try {
       const { cycleId, departmentId, status } = req.query;
 
-      // Allowed statuses for super admin view
-      const validStatuses = [
-        "SUPER_ADMIN_PENDING",
-        "FULLY_APPROVED",
-        "HR_FINALIZED",
-      ];
+      // Map frontend filter values to actual DB statuses
       const requestedStatus = status as string;
-      const finalStatus = validStatuses.includes(requestedStatus)
-        ? requestedStatus
-        : "SUPER_ADMIN_PENDING";
+      const statusMap: Record<string, string> = {
+        SUPER_ADMIN_PENDING: "ADMIN_REVIEW",
+        ADMIN_REVIEW: "ADMIN_REVIEW",
+        FULLY_APPROVED: "FULLY_APPROVED",
+        HR_FINALIZED: "HR_FINALIZED",
+      };
+      const dbStatus = statusMap[requestedStatus] ?? "ADMIN_REVIEW";
 
       const where: any = {
-        status: finalStatus as any,
+        status: dbStatus as any,
       };
 
       if (cycleId) {
@@ -536,7 +535,7 @@ router.post(
         return;
       }
 
-      if (appraisal.status !== "SUPER_ADMIN_PENDING") {
+      if (appraisal.status !== "ADMIN_REVIEW") {
         res.status(400).json({
           success: false,
           message: "Appraisal is not pending super admin approval",

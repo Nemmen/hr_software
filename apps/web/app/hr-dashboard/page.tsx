@@ -6,6 +6,7 @@ import { ArrowRight, Loader2, Users } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -30,9 +31,9 @@ type HrRequestSummary = {
 function HrDashboardPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [requests, setRequests] = useState<HrRequestSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -40,17 +41,19 @@ function HrDashboardPage() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.hr.getTeamAppraisals();
         if (!active) return;
         setRequests(response.data ?? []);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load HR dashboard",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) setLoading(false);
@@ -88,12 +91,6 @@ function HrDashboardPage() {
         </div>
       ) : (
         <>
-          {error ? (
-            <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
-
           <div className="mb-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-widest text-text-3">

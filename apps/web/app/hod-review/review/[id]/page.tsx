@@ -14,6 +14,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
@@ -104,6 +105,7 @@ function HodReviewDetailPage() {
   const appraisalId = params?.id as string;
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [itemState, setItemState] = useState<Record<string, ItemState>>({});
   const [additionalPoints, setAdditionalPoints] = useState(0);
@@ -114,8 +116,6 @@ function HodReviewDetailPage() {
   const [rejecting, setRejecting] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -123,7 +123,6 @@ function HodReviewDetailPage() {
     async function loadDetail() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.hod.getFacultyRequestById(appraisalId);
         if (!active) {
           return;
@@ -145,11 +144,14 @@ function HodReviewDetailPage() {
         setItemState(nextState);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load appraisal request detail",
-          );
+            variant: "error",
+          });
           setDetail(null);
         }
       } finally {
@@ -221,36 +223,49 @@ function HodReviewDetailPage() {
       });
 
       if (missingRemark) {
-        setError("Remarks are required for each deducted criterion.");
+        toast({
+          title: "Error",
+          description: "Remarks are required for each deducted criterion.",
+          variant: "error",
+        });
         return;
       }
     }
 
     if (additionalPoints > 0 && !additionalPointsRemark.trim()) {
-      setError("Additional points remark is required.");
+      toast({
+        title: "Error",
+        description: "Additional points remark is required.",
+        variant: "error",
+      });
       return;
     }
 
     try {
       setSaving(true);
-      setError(null);
-      setMessage(null);
       await api.hod.submitFacultyReview(appraisalId, {
         items: itemsPayload,
         additionalPoints,
         additionalPointsRemark: additionalPointsRemark.trim() || undefined,
         overallRemark: overallRemark.trim() || undefined,
       });
-      setMessage("HOD review submitted and forwarded successfully.");
+      toast({
+        title: "Success",
+        description: "HOD review submitted and forwarded successfully.",
+        variant: "success",
+      });
       setTimeout(() => {
         router.push("/hod-review");
       }, 1000);
     } catch (saveError: any) {
-      setError(
-        saveError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          saveError?.response?.data?.message ||
           saveError?.message ||
           "Failed to submit HOD review",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -260,13 +275,17 @@ function HodReviewDetailPage() {
     if (!rejectReason.trim()) return;
     try {
       setRejecting(true);
-      setError(null);
       await api.hod.rejectAppraisal(appraisalId, rejectReason.trim());
       setRejectDialogOpen(false);
-      setMessage("Appraisal rejected.");
+      toast({ title: "Success", description: "Appraisal rejected.", variant: "success" });
       setTimeout(() => router.push("/hod-review"), 1000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to reject");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to reject",
+        variant: "error",
+      });
     } finally {
       setRejecting(false);
     }
@@ -290,14 +309,7 @@ function HodReviewDetailPage() {
   }
 
   if (!detail) {
-    return (
-      <AppShell role={role}>
-        <PageHeader title="Review Request" subtitle="Request not found" />
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error || "Unable to load request detail."}
-        </div>
-      </AppShell>
-    );
+    return null;
   }
 
   return (
@@ -329,18 +341,6 @@ function HodReviewDetailPage() {
           </div>
         </div>
       )}
-
-      {error ? (
-        <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="mb-5 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-          {message}
-        </div>
-      ) : null}
 
       <div className="space-y-4">
         {sortByOrder(detail.items).map((item) => {
@@ -467,25 +467,27 @@ function HodReviewDetailPage() {
             </section>
           );
         })}
-      </div>
 
-      <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="font-display text-lg font-semibold text-text">
-          Final HOD Inputs
-        </h3>
-        {canEdit ? (
-          <>
+        {/* XIII. HOD's Remarks — rendered as a criterion item */}
+        <section className="rounded-2xl border border-brand/20 bg-surface p-5 shadow-sm">
+          <h3 className="font-display text-lg font-semibold text-text">
+            XIII. HOD&apos;s Remarks
+          </h3>
+          <p className="mt-1 text-sm text-text-2">
+            Additional score awarded by HOD based on overall faculty performance (max 4 marks)
+          </p>
+          {canEdit ? (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-text">
-                  HOD&apos;s Remarks Score (1 to 4 Marks)
+                  HOD&apos;s Remarks Score (0 to 4 Marks)
                 </label>
                 <input
                   type="number"
                   min={0}
                   max={4}
                   value={additionalPoints}
-                  title="HOD's Remarks Score (1 to 4 Marks)"
+                  title="HOD's Remarks Score (0 to 4 Marks)"
                   onChange={(event) =>
                     setAdditionalPoints(
                       Math.max(0, Math.min(4, Number(event.target.value || 0))),
@@ -499,32 +501,64 @@ function HodReviewDetailPage() {
                   Remarks for HOD&apos;s Score{" "}
                   {additionalPoints > 0 ? "(Required)" : "(Optional)"}
                 </label>
-                <input
+                <textarea
                   value={additionalPointsRemark}
+                  rows={2}
                   onChange={(event) =>
                     setAdditionalPointsRemark(event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                  placeholder="Type Your Remarks here"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-text">
-                  Overall remark (Optional)
-                </label>
-                <textarea
-                  value={overallRemark}
-                  onChange={(event) => setOverallRemark(event.target.value)}
-                  className="min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-                  placeholder="Final review note"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+                  placeholder={
+                    additionalPoints > 0
+                      ? "Reason for additional score (required)"
+                      : "Optional remark"
+                  }
                 />
               </div>
             </div>
+          ) : (
+            <div className="mt-4 grid gap-3 rounded-lg bg-bg p-3 md:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                  HOD Approved Points
+                </p>
+                <p className="mt-1 text-sm font-medium text-text">
+                  {additionalPoints}
+                </p>
+              </div>
+              {additionalPointsRemark && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                    Remark
+                  </p>
+                  <p className="mt-1 text-sm text-text-2">
+                    {additionalPointsRemark}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        {canEdit ? (
+          <>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium text-text">
+                Overall Remark (Optional)
+              </label>
+              <textarea
+                value={overallRemark}
+                onChange={(event) => setOverallRemark(event.target.value)}
+                className="min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+                placeholder="Final review note"
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-text-2">
-                Total approved points (including additional):{" "}
-                {totalApprovedPoints}
+                Total approved points (including HOD&apos;s remarks):{" "}
+                <span className="font-semibold text-text">{totalApprovedPoints}</span>
               </p>
               <div className="flex gap-3">
                 <button
@@ -553,25 +587,7 @@ function HodReviewDetailPage() {
             </div>
           </>
         ) : (
-          <div className="mt-4 grid gap-3 rounded-lg bg-bg p-3 md:grid-cols-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
-                Additional Points
-              </p>
-              <p className="mt-1 text-sm font-medium text-text">
-                {additionalPoints}
-              </p>
-            </div>
-            {additionalPointsRemark && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
-                  Additional Points Remark
-                </p>
-                <p className="mt-1 text-sm text-text-2">
-                  {additionalPointsRemark}
-                </p>
-              </div>
-            )}
+          <div className="grid gap-3 md:grid-cols-2">
             {overallRemark && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-text-3">

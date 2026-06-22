@@ -7,6 +7,7 @@ import { Download, Pencil } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { withAuth } from "@/components/auth/withAuth";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AppraisalItemRow } from "@/components/ui/AppraisalItemRow";
@@ -21,9 +22,9 @@ function AppraisalDetailPage() {
   const params = useParams();
   const appraisalId = params?.id as string;
   const { session } = useAuthStore();
+  const { toast } = useToast();
   const [appraisal, setAppraisal] = useState<AppraisalSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const role = getPrimaryRole(session?.user.roles ?? []);
 
@@ -33,7 +34,6 @@ function AppraisalDetailPage() {
     async function loadAppraisal() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.appraisals.getById(appraisalId);
 
         if (active) {
@@ -41,11 +41,14 @@ function AppraisalDetailPage() {
         }
       } catch (fetchError: any) {
         if (active) {
-          setError(
-            fetchError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              fetchError?.response?.data?.message ||
               fetchError?.message ||
               "Failed to load appraisal",
-          );
+            variant: "error",
+          });
           setAppraisal(null);
         }
       } finally {
@@ -89,24 +92,8 @@ function AppraisalDetailPage() {
     );
   }
 
-  if (error || !appraisal) {
-    return (
-      <AppShell role={role}>
-        <EmptyState
-          title="Appraisal not found"
-          description={error || "The requested appraisal could not be loaded."}
-          action={
-            <button
-              type="button"
-              onClick={() => router.push("/appraisals")}
-              className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark"
-            >
-              Back to appraisals
-            </button>
-          }
-        />
-      </AppShell>
-    );
+  if (!appraisal) {
+    return null;
   }
 
   return (

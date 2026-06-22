@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, Clock, Loader2, XCircle } from "lucide-react"
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -31,6 +32,7 @@ type AppraisalRow = {
 
 const STATUS_LABEL: Record<string, string> = {
   ADMIN_REVIEW: "Pending Admin Review",
+  SUPER_ADMIN_PENDING: "Forwarded to Super Admin",
   HR_FINALIZED: "Forwarded to HR",
   COMMITTEE_REVIEW: "At Committee",
   FULLY_APPROVED: "Fully Approved",
@@ -39,6 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   ADMIN_REVIEW: "bg-orange-100 text-orange-700",
+  SUPER_ADMIN_PENDING: "bg-purple-100 text-purple-700",
   HR_FINALIZED: "bg-blue-100 text-blue-700",
   COMMITTEE_REVIEW: "bg-purple-100 text-purple-700",
   FULLY_APPROVED: "bg-success-bg text-success",
@@ -48,9 +51,9 @@ const STATUS_COLOR: Record<string, string> = {
 function AdminReviewDashboard() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [appraisals, setAppraisals] = useState<AppraisalRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -58,14 +61,20 @@ function AdminReviewDashboard() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const res = await api.adminReview.getList();
         if (active) {
           setAppraisals((res.data as AppraisalRow[]) ?? []);
         }
       } catch (err: any) {
         if (active) {
-          setError(err?.response?.data?.message || err?.message || "Failed to load appraisals");
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message ||
+              err?.message ||
+              "Failed to load appraisals",
+            variant: "error",
+          });
         }
       } finally {
         if (active) setLoading(false);
@@ -97,12 +106,6 @@ function AdminReviewDashboard() {
         title="Admin Review Dashboard"
         subtitle="Level 2 — review HOD-approved appraisals before forwarding to HR"
       />
-
-      {error && (
-        <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
@@ -139,7 +142,7 @@ function AdminReviewDashboard() {
         </section>
       )}
 
-      {appraisals.length === 0 && !error && (
+      {appraisals.length === 0 && (
         <div className="rounded-2xl border border-border bg-surface p-10 text-center text-sm text-text-3 shadow-sm">
           No appraisals found for the current cycle.
         </div>

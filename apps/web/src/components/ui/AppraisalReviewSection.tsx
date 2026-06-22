@@ -4,7 +4,9 @@ import { ExternalLink } from "lucide-react";
 import { toDriveViewerUrl } from "@/lib/utils/drive";
 
 type EvidenceItem = {
-  url: string;
+  url?: string;
+  viewUrl?: string | null;
+  directUrl?: string | null;
   fileName?: string;
   mime?: string;
   size?: number;
@@ -13,6 +15,7 @@ type EvidenceItem = {
 export interface AppraisalReviewItemProps {
   title: string;
   heading: string;
+  selectedLabel?: string | null;
   approvedPoints: number;
   previousPoints?: number;
   remark?: string | null;
@@ -35,6 +38,7 @@ function fullEvidenceUrl(url: string, apiOrigin: string = "") {
 export function AppraisalReviewItem({
   title,
   heading,
+  selectedLabel,
   approvedPoints,
   previousPoints,
   remark,
@@ -53,6 +57,11 @@ export function AppraisalReviewItem({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-semibold text-text">{heading}</h4>
+          {selectedLabel && (
+            <p className="mt-0.5 text-xs text-text-2">
+              Selected: <span className="font-medium text-text">{selectedLabel}</span>
+            </p>
+          )}
           <p className="text-xs text-text-3">{title}</p>
         </div>
         <div className="flex flex-shrink-0 flex-col items-end gap-1">
@@ -77,18 +86,14 @@ export function AppraisalReviewItem({
         </div>
       </div>
 
-      {/* Display Mode - Show existing data */}
-      {!isCurrentReview && (
-        <>
-          {remark && (
-            <div className="mt-3 rounded-lg bg-bg p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-text-3">
-                Remark{reviewer && ` (${reviewer})`}
-              </p>
-              <p className="mt-1 text-sm text-text-2">{remark}</p>
-            </div>
-          )}
-        </>
+      {/* Display Mode - Show existing data (also when in review mode but item has no inputs) */}
+      {(!isCurrentReview || !inputProps) && remark && (
+        <div className="mt-3 rounded-lg bg-bg p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-text-3">
+            Remark{reviewer && ` (${reviewer})`}
+          </p>
+          <p className="mt-1 text-sm text-text-2">{remark}</p>
+        </div>
       )}
 
       {/* Edit Mode - Show input fields */}
@@ -97,15 +102,20 @@ export function AppraisalReviewItem({
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold text-text-3">
-                Approved Points
+                Approved Points{previousPoints !== undefined && ` (max ${previousPoints})`}
               </label>
               <input
                 type="number"
                 value={inputProps.approvedPointsValue}
-                onChange={(e) =>
-                  inputProps.onApprovedPointsChange(Number(e.target.value))
-                }
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const clamped = previousPoints !== undefined
+                    ? Math.max(0, Math.min(previousPoints, raw))
+                    : Math.max(0, raw);
+                  inputProps.onApprovedPointsChange(clamped);
+                }}
                 min={0}
+                max={previousPoints}
                 className="mt-1 h-9 w-full rounded-lg border border-border bg-bg px-3 text-sm"
               />
             </div>
@@ -134,7 +144,7 @@ export function AppraisalReviewItem({
             {evidence.map((item, idx) => (
               <a
                 key={idx}
-                href={toDriveViewerUrl(fullEvidenceUrl(item.url))}
+                href={toDriveViewerUrl(fullEvidenceUrl(item.url ?? item.viewUrl ?? item.directUrl ?? ""))}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-2 text-xs text-brand hover:text-brand-dark"
@@ -156,6 +166,7 @@ export interface AppraisalReviewLayerProps {
   items: Array<{
     itemId: string;
     heading: string;
+    selectedLabel?: string | null;
     approvedPoints: number;
     previousPoints?: number;
     remark?: string | null;
@@ -208,6 +219,7 @@ export function AppraisalReviewLayer({
             key={item.itemId}
             title={title}
             heading={item.heading}
+            selectedLabel={item.selectedLabel}
             approvedPoints={item.approvedPoints}
             previousPoints={item.previousPoints}
             remark={item.remark}

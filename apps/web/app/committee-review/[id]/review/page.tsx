@@ -9,11 +9,11 @@ import {
   ExternalLink,
   Loader2,
   Save,
-  AlertCircle,
 } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -237,6 +237,7 @@ function CommitteeReviewPage() {
   const appraisalId = params.id as string;
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [appraisal, setAppraisal] = useState<CommitteeAppraisalDetail | null>(
     null,
@@ -247,8 +248,6 @@ function CommitteeReviewPage() {
   const [savingCategory, setSavingCategory] = useState<ReviewCategory | null>(
     null,
   );
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<ReviewCategory>(
     CATEGORY_ORDER[0],
   );
@@ -267,7 +266,6 @@ function CommitteeReviewPage() {
     async function loadAppraisal() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.appraisals.getById(appraisalId);
         const payload =
           response.data as unknown as CommitteeAppraisalDetailResponse;
@@ -383,11 +381,14 @@ function CommitteeReviewPage() {
         setItemState(initialState);
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load appraisal review",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -426,8 +427,8 @@ function CommitteeReviewPage() {
         (sum, item) =>
           sum + (item.committeeApprovedPoints ?? item.hodApprovedPoints),
         0,
-      ),
-    [appraisal],
+      ) + (isHodAppraisal ? remarksScore : hodAdditionalPoints),
+    [appraisal, isHodAppraisal, remarksScore, hodAdditionalPoints],
   );
 
   const reviewSections = useMemo(() => {
@@ -518,14 +519,16 @@ function CommitteeReviewPage() {
     }
 
     if (validateItemRemarks(section.items)) {
-      setError("Remarks are required for each deducted criterion.");
+      toast({
+        title: "Error",
+        description: "Remarks are required for each deducted criterion.",
+        variant: "error",
+      });
       return;
     }
 
     try {
       setSavingCategory(category);
-      setError(null);
-      setMessage(null);
       await api.committee.submitReview(appraisalId, {
         items: section.items.map((item) => buildItemPayload(item, itemState)),
         finalize: false,
@@ -534,13 +537,20 @@ function CommitteeReviewPage() {
         ...current,
         [category]: true,
       }));
-      setMessage(`${category} section saved successfully.`);
+      toast({
+        title: "Success",
+        description: `${category} section saved successfully.`,
+        variant: "success",
+      });
     } catch (submitError: any) {
-      setError(
-        submitError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          submitError?.response?.data?.message ||
           submitError?.message ||
           "Failed to save committee section",
-      );
+        variant: "error",
+      });
     } finally {
       setSavingCategory(null);
     }
@@ -556,35 +566,39 @@ function CommitteeReviewPage() {
     );
 
     if (validateItemRemarks(appraisal.items)) {
-      setError("Remarks are required for each deducted criterion.");
-      return;
-    }
-
-    if (isHodAppraisal && remarksScore > 0 && !remarksScoreRemark.trim()) {
-      setError("Remarks are required for HOD's Remarks Score.");
+      toast({
+        title: "Error",
+        description: "Remarks are required for each deducted criterion.",
+        variant: "error",
+      });
       return;
     }
 
     try {
       setSaving(true);
-      setError(null);
-      setMessage(null);
       await api.committee.submitReview(appraisalId, {
         items: itemsPayload,
         finalize: true,
         additionalPoints: isHodAppraisal ? remarksScore : hodAdditionalPoints,
         additionalPointsRemark: isHodAppraisal ? (remarksScoreRemark.trim() || undefined) : undefined,
       });
-      setMessage("Committee review submitted successfully.");
+      toast({
+        title: "Success",
+        description: "Committee review submitted successfully.",
+        variant: "success",
+      });
       setTimeout(() => {
         router.push("/committee-review");
       }, 1000);
     } catch (submitError: any) {
-      setError(
-        submitError?.response?.data?.message ||
+      toast({
+        title: "Error",
+        description:
+          submitError?.response?.data?.message ||
           submitError?.message ||
           "Failed to submit committee review",
-      );
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -603,30 +617,8 @@ function CommitteeReviewPage() {
     );
   }
 
-  if (error || !appraisal) {
-    return (
-      <AppShell role={role}>
-        <PageHeader
-          title="Committee Appraisal Review"
-          subtitle="Unable to load appraisal"
-          actions={
-            <Link
-              href="/committee-review"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-surface-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Link>
-          }
-        />
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-            <div>{error || "Appraisal not found"}</div>
-          </div>
-        </div>
-      </AppShell>
-    );
+  if (!appraisal) {
+    return null;
   }
 
   return (
@@ -660,18 +652,6 @@ function CommitteeReviewPage() {
           </div>
         </div>
       )}
-
-      {error ? (
-        <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="mb-5 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-          {message}
-        </div>
-      ) : null}
 
       {/* Summary metrics */}
       <div className="mb-6 grid gap-4 md:grid-cols-4">
@@ -989,49 +969,7 @@ function CommitteeReviewPage() {
       {/* Footer */}
       {canEdit ? (
         <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-          {isHodAppraisal ? (
-            <>
-              <h3 className="font-display text-lg font-semibold text-text">
-                Final Committee Inputs
-              </h3>
-              <p className="mt-1 text-sm text-text-2">
-                Save each category section first, then fill the HOD&apos;s Remarks Score
-                and submit when everything is ready.
-              </p>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    HOD&apos;s Remarks Score (1 to 4 Marks)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={4}
-                    value={remarksScore}
-                    title="HOD's Remarks Score (1 to 4 Marks)"
-                    onChange={(event) =>
-                      setRemarksScore(
-                        Math.max(0, Math.min(4, Number(event.target.value || 0))),
-                      )
-                    }
-                    className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text">
-                    Remarks for HOD&apos;s Score{" "}
-                    {remarksScore > 0 ? "(Required)" : "(Optional)"}
-                  </label>
-                  <input
-                    value={remarksScoreRemark}
-                    onChange={(event) => setRemarksScoreRemark(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
-                    placeholder="Type Your Remarks here"
-                  />
-                </div>
-              </div>
-            </>
-          ) : null}
+         
           <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${isHodAppraisal ? "mt-5" : ""}`}>
             <p className="text-sm text-text-2">
               Total approved points{isHodAppraisal ? " (including HOD’s Remarks)" : ""}:{" "}

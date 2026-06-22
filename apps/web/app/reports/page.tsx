@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -63,9 +64,9 @@ function ReportsPage() {
   const router = useRouter();
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [appraisals, setAppraisals] = useState<AppraisalRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDept, setFilterDept] = useState("all");
 
@@ -74,11 +75,16 @@ function ReportsPage() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const res = await api.hr.getTeamAppraisals();
         if (active) setAppraisals((res.data as AppraisalRow[]) ?? []);
       } catch (err: any) {
-        if (active) setError(err?.response?.data?.message || err?.message || "Failed to load");
+        if (active)
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message || err?.message || "Failed to load",
+            variant: "error",
+          });
       } finally {
         if (active) setLoading(false);
       }
@@ -154,10 +160,6 @@ function ReportsPage() {
           </button>
         }
       />
-
-      {error && (
-        <div className="mb-5 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">{error}</div>
-      )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">

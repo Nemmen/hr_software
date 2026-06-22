@@ -9,16 +9,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, type RegisterInput } from "@svgoi/zod-schemas";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useToast } from "@/components/ui/Toast";
 
 type DepartmentOption = { id: string; name: string };
 
 export default function RegisterPage() {
   const router = useRouter();
   const { session, isHydrated } = useAuthStore();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loadingDepartments, setLoadingDepartments] = useState(true);
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -73,15 +74,16 @@ export default function RegisterPage() {
   }, []);
 
   const onSubmit = async (values: RegisterInput) => {
-    setServerError(null);
-
     try {
       await api.auth.register(values);
       router.push("/login?created=1");
     } catch {
-      setServerError(
-        "Unable to create your account. Please verify the details and try again.",
-      );
+      toast({
+        title: "Error",
+        description:
+          "Unable to create your account. Please verify the details and try again.",
+        variant: "error",
+      });
     }
   };
 
@@ -276,12 +278,6 @@ export default function RegisterPage() {
                 </p>
               ) : null}
             </div>
-
-            {serverError ? (
-              <div className="rounded-lg border border-danger/20 bg-danger-bg p-3 text-sm text-danger">
-                {serverError}
-              </div>
-            ) : null}
 
             <button
               type="submit"

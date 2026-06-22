@@ -14,6 +14,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -47,6 +48,7 @@ type RequestDetail = {
   items: ReviewItem[];
   finalScore: number | null;
   finalPercent: number | null;
+  additionalPoints: number;
   hodOverallRemark: string;
   adminRemark: string;
 };
@@ -62,6 +64,7 @@ function AdminReviewDetail() {
   const params = useParams();
   const router = useRouter();
   const appraisalId = params.id as string;
+  const { toast } = useToast();
 
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [itemState, setItemState] = useState<Record<string, ItemState>>({});
@@ -69,8 +72,6 @@ function AdminReviewDetail() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [rejecting, setRejecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -80,7 +81,6 @@ function AdminReviewDetail() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const res = await api.adminReview.getById(appraisalId);
         if (!active) return;
 
@@ -102,7 +102,14 @@ function AdminReviewDetail() {
         setItemState(initial);
       } catch (err: any) {
         if (active) {
-          setError(err?.response?.data?.message || err?.message || "Failed to load appraisal");
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message ||
+              err?.message ||
+              "Failed to load appraisal",
+            variant: "error",
+          });
         }
       } finally {
         if (active) setLoading(false);
@@ -113,10 +120,19 @@ function AdminReviewDetail() {
     return () => { active = false; };
   }, [appraisalId]);
 
+  const hodAdditionalPoints = detail?.additionalPoints ?? 0;
+
   const totalApproved = useMemo(
-    () => Object.values(itemState).reduce((sum, s) => sum + s.approvedPoints, 0),
-    [itemState],
+    () => Object.values(itemState).reduce((sum, s) => sum + s.approvedPoints, 0) + hodAdditionalPoints,
+    [itemState, hodAdditionalPoints],
   );
+
+  function adminIncrement(points: number) {
+    if (points < 16) return 5;
+    if (points < 30) return 8;
+    if (points < 45) return 10;
+    return 15;
+  }
 
   const isEditable = detail?.status === "ADMIN_REVIEW";
 
@@ -124,8 +140,6 @@ function AdminReviewDetail() {
     if (!detail || !isEditable) return;
     try {
       setSubmitting(true);
-      setError(null);
-      setSuccess(null);
 
       const items = detail.items.map((item) => ({
         itemId: item.id,
@@ -134,10 +148,22 @@ function AdminReviewDetail() {
       }));
 
       await api.adminReview.submitReview(appraisalId, { items, overallRemark: overallRemark.trim() || undefined });
-      setSuccess("Appraisal forwarded to HR successfully.");
+      toast({
+        title: "Success",
+        description:
+          "Appraisal reviewed and forwarded to Super Admin for final approval.",
+        variant: "success",
+      });
       router.push("/admin-review");
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to submit review");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to submit review",
+        variant: "error",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -147,13 +173,17 @@ function AdminReviewDetail() {
     if (!rejectReason.trim()) return;
     try {
       setRejecting(true);
-      setError(null);
       await api.adminReview.rejectAppraisal(appraisalId, rejectReason.trim());
       setRejectDialogOpen(false);
-      setSuccess("Appraisal rejected.");
+      toast({ title: "Success", description: "Appraisal rejected.", variant: "success" });
       router.push("/admin-review");
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to reject");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to reject",
+        variant: "error",
+      });
     } finally {
       setRejecting(false);
     }
@@ -172,14 +202,7 @@ function AdminReviewDetail() {
   }
 
   if (!detail) {
-    return (
-      <AppShell role={role}>
-        <PageHeader title="Admin Review" subtitle="Not found" />
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error ?? "Appraisal not found"}
-        </div>
-      </AppShell>
-    );
+    return null;
   }
 
   return (
@@ -198,13 +221,6 @@ function AdminReviewDetail() {
         }
       />
 
-      {error && (
-        <div className="mb-4 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">{success}</div>
-      )}
-
       <div className="mb-6 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">Faculty</p>
@@ -212,12 +228,16 @@ function AdminReviewDetail() {
           <p className="text-xs text-text-3">{detail.user.email}</p>
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-text-3">HOD Score</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-text-3">HR Approved Score</p>
           <p className="mt-1 font-display text-2xl font-bold text-text">{detail.finalScore ?? 0}</p>
+          {hodAdditionalPoints > 0 && (
+            <p className="mt-0.5 text-xs text-text-3">incl. {hodAdditionalPoints} HOD remarks</p>
+          )}
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">Admin Approved</p>
           <p className="mt-1 font-display text-2xl font-bold text-brand">{totalApproved}</p>
+          <p className="mt-0.5 text-xs text-text-3">{adminIncrement(totalApproved)}% increment</p>
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">Status</p>
@@ -375,9 +395,17 @@ function AdminReviewDetail() {
       {isEditable && (
         <div className="sticky bottom-0 mt-6 rounded-2xl border border-border bg-surface/95 p-4 shadow-modal backdrop-blur">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-text-2">
-              Total admin approved points: <span className="font-semibold text-text">{totalApproved}</span>
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-sm text-text-2">
+                Total approved: <span className="font-semibold text-text">{totalApproved}</span>
+                {hodAdditionalPoints > 0 && (
+                  <span className="ml-1 text-xs text-text-3">(incl. {hodAdditionalPoints} HOD remarks)</span>
+                )}
+              </p>
+              <p className="text-sm text-text-2">
+                Increment: <span className="font-semibold text-brand">{adminIncrement(totalApproved)}%</span>
+              </p>
+            </div>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -395,7 +423,7 @@ function AdminReviewDetail() {
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {submitting ? "Forwarding..." : "Approve & Forward to HR"}
+                {submitting ? "Approving..." : "Approve & Finalise"}
               </button>
             </div>
           </div>

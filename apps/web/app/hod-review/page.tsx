@@ -17,6 +17,7 @@ import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -47,6 +48,7 @@ const PENDING_STATUSES = ["SUBMITTED", "HOD_REVIEW"];
 function HodDashboardPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [requests, setRequests] = useState<HodRequestSummary[]>([]);
   const [selfStatus, setSelfStatus] = useState<{
     hasRequest?: boolean;
@@ -56,7 +58,6 @@ function HodDashboardPage() {
     incrementPercent?: number | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [cycleFilter, setCycleFilter] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -69,7 +70,6 @@ function HodDashboardPage() {
     async function loadDashboard() {
       try {
         setLoading(true);
-        setError(null);
         const [requestResponse, selfResponse] = await Promise.all([
           api.hod.getFacultyRequests(cycleFilter === "all" ? "all" : undefined),
           api.faculty.getAppraisalStatus(),
@@ -86,11 +86,14 @@ function HodDashboardPage() {
         setSearch("");
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load HOD dashboard",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -216,11 +219,6 @@ function HodDashboardPage() {
         </div>
       ) : (
         <>
-          {error ? (
-            <div className="mb-6 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
 
           {/* Cycle toggle + filters */}
           <div className="mb-6 space-y-4">

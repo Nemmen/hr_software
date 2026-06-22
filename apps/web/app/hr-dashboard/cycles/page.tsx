@@ -5,6 +5,7 @@ import { CalendarDays, Loader2, Pause, Play, Plus, X } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { withAuth } from "@/components/auth/withAuth";
+import { useToast } from "@/components/ui/Toast";
 import { api, type HrCycleSummary } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -27,15 +28,14 @@ type CreateCycleForm = {
 function HrCyclesPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [cycles, setCycles] = useState<HrCycleSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState<CreateCycleForm>({
     name: "",
     startDate: "",
@@ -46,11 +46,17 @@ function HrCyclesPage() {
   async function loadCycles() {
     try {
       setLoading(true);
-      setError(null);
       const res = await api.hr.getCycles();
       setCycles(res.data ?? []);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to load cycles");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load cycles",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -63,12 +69,15 @@ function HrCyclesPage() {
   async function handleCreateCycle(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name || !form.startDate || !form.endDate) {
-      setCreateError("Name, start date, and end date are required");
+      toast({
+        title: "Error",
+        description: "Name, start date, and end date are required",
+        variant: "error",
+      });
       return;
     }
     try {
       setCreating(true);
-      setCreateError(null);
       await api.hr.createCycle({
         name: form.name,
         startDate: form.startDate,
@@ -79,7 +88,14 @@ function HrCyclesPage() {
       setForm({ name: "", startDate: "", endDate: "", isActive: false });
       await loadCycles();
     } catch (err: any) {
-      setCreateError(err?.response?.data?.message || err?.message || "Failed to create cycle");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to create cycle",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -88,11 +104,17 @@ function HrCyclesPage() {
   async function toggleActive(cycle: HrCycleSummary) {
     try {
       setToggling(cycle.id);
-      setError(null);
       await api.hr.updateCycle(cycle.id, { isActive: !cycle.isActive });
       await loadCycles();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to update cycle");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update cycle",
+        variant: "error",
+      });
     } finally {
       setToggling(null);
     }
@@ -115,7 +137,7 @@ function HrCyclesPage() {
         actions={
           <button
             type="button"
-            onClick={() => { setShowCreateModal(true); setCreateError(null); }}
+            onClick={() => { setShowCreateModal(true); }}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark"
           >
             <Plus className="h-4 w-4" />
@@ -123,12 +145,6 @@ function HrCyclesPage() {
           </button>
         }
       />
-
-      {error && (
-        <div className="mb-4 rounded-xl border border-danger/20 bg-danger-bg p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
 
       <div className="mb-6 rounded-2xl border border-brand/20 bg-brand-light/30 p-4 text-sm">
         <p className="font-medium text-brand">HR-controlled access</p>
@@ -153,12 +169,6 @@ function HrCyclesPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-
-            {createError && (
-              <div className="mb-4 rounded-xl border border-danger/20 bg-danger-bg p-3 text-sm text-danger">
-                {createError}
-              </div>
-            )}
 
             <form onSubmit={(e) => void handleCreateCycle(e)} className="space-y-4">
               <div>

@@ -13,6 +13,7 @@ import {
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
@@ -91,11 +92,11 @@ function getImageSrc(imageUrl: string | null | undefined) {
 function FacultyDashboardPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [profile, setProfile] = useState<FacultyProfile | null>(null);
   const [requestStatus, setRequestStatus] =
     useState<FacultyAppraisalRequestStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -103,7 +104,6 @@ function FacultyDashboardPage() {
     async function loadProfile() {
       try {
         setLoading(true);
-        setError(null);
         const [profileResponse, statusResponse] = await Promise.all([
           api.faculty.getProfile(),
           api.faculty.getAppraisalStatus(),
@@ -115,11 +115,14 @@ function FacultyDashboardPage() {
         }
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load faculty dashboard",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -150,10 +153,6 @@ function FacultyDashboardPage() {
             <Loader2 className="h-4 w-4 animate-spin" />
             <span className="text-sm">Loading faculty dashboard...</span>
           </div>
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">

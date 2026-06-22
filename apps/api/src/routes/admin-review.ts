@@ -10,6 +10,23 @@ import { writeAuditLog } from "../lib/audit";
 
 const router: express.Router = express.Router();
 
+function facultyIncrement(totalPoints: number) {
+  if (totalPoints < 16) return 5;
+  if (totalPoints < 30) return 8;
+  if (totalPoints < 45) return 10;
+  return 15;
+}
+
+function parseHodAdditionalPoints(hodRemarks: string | null): number {
+  if (!hodRemarks) return 0;
+  try {
+    const r = JSON.parse(hodRemarks);
+    return typeof r.additionalPoints === "number" ? r.additionalPoints : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function parseItemNotes(notes: string | null) {
   if (!notes) return {};
   try {
@@ -60,7 +77,7 @@ router.get(
       const appraisals = await prisma.appraisal.findMany({
         where: {
           ...(effectiveCycleId ? { cycleId: effectiveCycleId } : {}),
-          status: { in: ["ADMIN_REVIEW", "FULLY_APPROVED", "REJECTED"] },
+          status: { in: ["ADMIN_REVIEW", "SUPER_ADMIN_PENDING", "FULLY_APPROVED", "REJECTED"] },
         },
         include: {
           cycle: {
@@ -88,7 +105,7 @@ router.get(
         finalScore: a.finalScore,
         user: a.user,
         cycle: a.cycle,
-        totalSelectedPoints: a.items.reduce((sum, i) => sum + i.points, 0),
+        totalSelectedPoints: a.finalScore ?? a.items.reduce((sum, i) => sum + i.points, 0),
         itemsCount: a.items.length,
         finalPercent: a.finalPercent,
         currentSalary: a.user.facultyProfile?.currentSalary ?? 0,
@@ -269,7 +286,10 @@ router.put(
         }
       }
 
-      const totalApproved = parsed.items.reduce((sum, i) => sum + i.approvedPoints, 0);
+      const itemApproved = parsed.items.reduce((sum, i) => sum + i.approvedPoints, 0);
+      const hodAdditionalPoints = parseHodAdditionalPoints(appraisal.hodRemarks);
+      const totalApproved = itemApproved + hodAdditionalPoints;
+      const incrementPercent = facultyIncrement(totalApproved);
 
       for (const reviewed of parsed.items) {
         const existing = byId.get(reviewed.itemId);
@@ -298,6 +318,7 @@ router.put(
           data: {
             status: "FULLY_APPROVED",
             finalScore: totalApproved,
+            finalPercent: incrementPercent,
             adminRemark: JSON.stringify({
               overallRemark: parsed.overallRemark?.trim() || null,
               reviewedBy: actorId,
@@ -312,13 +333,13 @@ router.put(
         action: "appraisal.admin.review.completed",
         resource: "Appraisal",
         resourceId: appraisalId,
-        meta: { totalApproved },
+        meta: { itemApproved, hodAdditionalPoints, totalApproved, incrementPercent },
       });
 
       res.json({
         success: true,
-        message: "Appraisal forwarded to HR",
-        data: { appraisalId, totalApprovedPoints: totalApproved, forwardedStatus: "HR_FINALIZED" },
+        message: "Appraisal approved successfully",
+        data: { appraisalId, totalApprovedPoints: totalApproved, incrementPercent, forwardedStatus: "FULLY_APPROVED" },
       });
     } catch (error) {
       next(error);

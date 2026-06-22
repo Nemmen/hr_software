@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { withAuth } from "@/components/auth/withAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { api, type AppraisalSummary } from "@/lib/api";
 import { getPrimaryRole } from "@/lib/utils/routing";
 import { useAuthStore } from "@/store/auth";
@@ -16,10 +17,10 @@ function CommitteeViewPage() {
   const appraisalId = params.id as string;
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
 
   const [appraisal, setAppraisal] = useState<AppraisalSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -27,7 +28,6 @@ function CommitteeViewPage() {
     async function loadAppraisal() {
       try {
         setLoading(true);
-        setError(null);
         const response = await api.appraisals.getById(appraisalId);
 
         if (active) {
@@ -35,11 +35,14 @@ function CommitteeViewPage() {
         }
       } catch (loadError: any) {
         if (active) {
-          setError(
-            loadError?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              loadError?.response?.data?.message ||
               loadError?.message ||
               "Failed to load appraisal details",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) {
@@ -76,30 +79,8 @@ function CommitteeViewPage() {
     );
   }
 
-  if (error || !appraisal) {
-    return (
-      <AppShell role={role}>
-        <PageHeader
-          title="Committee Appraisal Details"
-          subtitle="Unable to load appraisal"
-          actions={
-            <Link
-              href="/committee-review"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-surface-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Link>
-          }
-        />
-        <div className="rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-            <div>{error || "Appraisal not found"}</div>
-          </div>
-        </div>
-      </AppShell>
-    );
+  if (!appraisal) {
+    return null;
   }
 
   return (

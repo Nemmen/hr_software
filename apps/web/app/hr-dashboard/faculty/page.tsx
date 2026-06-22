@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { useToast } from "@/components/ui/Toast";
 import { withAuth } from "@/components/auth/withAuth";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
@@ -32,7 +34,6 @@ type HrUser = {
 type DepartmentSummary = { id: string; name: string };
 
 const PROFILE_LABELS: Record<string, string> = {
-  userId: "User ID",
   fatherName: "Father name",
   dob: "Date of birth",
   dateOfJoining: "Date of joining",
@@ -45,11 +46,19 @@ const PROFILE_LABELS: Record<string, string> = {
   qualification: "Qualification",
   graduation: "Graduation",
   postGraduation: "Post graduation",
+  otherPgDegree: "Other PG degree",
   phdDegree: "PhD degree",
-  imageUrl: "Profile image",
+  totalExperience: "Total experience",
+  designation: "Designation",
+  employeeCode: "Employee code",
+  collegeName: "College name",
+  profileRemarks: "Remarks",
   createdAt: "Created at",
   updatedAt: "Updated at",
 };
+
+// Keys handled separately (photo) or that are internal identifiers
+const PROFILE_SKIP_KEYS = new Set(["userId", "imageUrl"]);
 
 const DATE_FIELDS = new Set([
   "dob",
@@ -126,14 +135,16 @@ function formatProfileValue(key: string, value: unknown) {
 function HrFacultyPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
+  const { toast } = useToast();
   const [users, setUsers] = useState<HrUser[]>([]);
   const [departments, setDepartments] = useState<DepartmentSummary[]>([]);
   const [selected, setSelected] = useState<HrUser | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [blockingTemp, setBlockingTemp] = useState(false);
+  const [blockingPerm, setBlockingPerm] = useState(false);
+  const [unblocking, setUnblocking] = useState(false);
   const [createForm, setCreateForm] = useState({
     email: "",
     firstName: "",
@@ -155,7 +166,6 @@ function HrFacultyPage() {
     async function load() {
       try {
         setLoading(true);
-        setError(null);
         const [usersResponse, departmentsResponse] = await Promise.all([
           api.hr.getUsers(),
           api.departments.list(),
@@ -165,11 +175,14 @@ function HrFacultyPage() {
         setDepartments(departmentsResponse.data ?? []);
       } catch (err: any) {
         if (active) {
-          setError(
-            err?.response?.data?.message ||
+          toast({
+            title: "Error",
+            description:
+              err?.response?.data?.message ||
               err?.message ||
               "Failed to load faculty",
-          );
+            variant: "error",
+          });
         }
       } finally {
         if (active) setLoading(false);
@@ -207,19 +220,18 @@ function HrFacultyPage() {
       departmentId: user.departmentId ?? "",
     });
     setBlockUntil("");
-    setMessage(null);
-    setError(null);
   }
 
   async function reloadUsers() {
     const response = await api.hr.getUsers();
-    setUsers(response.data ?? []);
+    const fresh = response.data ?? [];
+    setUsers(fresh);
+    setSelected((prev) => prev ? (fresh.find((u) => u.id === prev.id) ?? prev) : null);
   }
 
   async function handleCreate() {
     try {
       setSaving(true);
-      setError(null);
       await api.hr.createUser({
         email: createForm.email,
         password: createForm.password,
@@ -228,7 +240,7 @@ function HrFacultyPage() {
         departmentId: createForm.departmentId || undefined,
         roles: ["FACULTY"],
       });
-      setMessage("Faculty account created.");
+      toast({ title: "Success", description: "Faculty account created.", variant: "success" });
       setCreateForm({
         email: "",
         firstName: "",
@@ -238,7 +250,12 @@ function HrFacultyPage() {
       });
       await reloadUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Create failed");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Create failed",
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -248,7 +265,6 @@ function HrFacultyPage() {
     if (!selected) return;
     try {
       setSaving(true);
-      setError(null);
       await api.hr.updateUser(selected.id, {
         email: editForm.email,
         firstName: editForm.firstName,
@@ -256,10 +272,15 @@ function HrFacultyPage() {
         departmentId: editForm.departmentId || undefined,
         roles: ["FACULTY"],
       });
-      setMessage("Faculty account updated.");
+      toast({ title: "Success", description: "Faculty account updated.", variant: "success" });
       await reloadUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Update failed");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Update failed",
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -268,47 +289,57 @@ function HrFacultyPage() {
   async function handleBlockTemporary() {
     if (!selected) return;
     try {
-      setSaving(true);
-      setError(null);
+      setBlockingTemp(true);
       await api.hr.blockUser(selected.id, blockUntil || undefined);
-      setMessage("Faculty account temporarily disabled.");
+      toast({ title: "Success", description: "Faculty account temporarily disabled.", variant: "success" });
       await reloadUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Block failed");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Block failed",
+        variant: "error",
+      });
     } finally {
-      setSaving(false);
+      setBlockingTemp(false);
     }
   }
 
   async function handleBlockPermanent() {
     if (!selected) return;
     try {
-      setSaving(true);
-      setError(null);
+      setBlockingPerm(true);
       await api.hr.blockUser(selected.id, "9999-12-31T00:00:00.000Z");
-      setMessage("Faculty account permanently blocked.");
+      toast({ title: "Success", description: "Faculty account permanently blocked.", variant: "success" });
       await reloadUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Block failed");
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Block failed",
+        variant: "error",
+      });
     } finally {
-      setSaving(false);
+      setBlockingPerm(false);
     }
   }
 
   async function handleUnblock() {
     if (!selected) return;
     try {
-      setSaving(true);
-      setError(null);
+      setUnblocking(true);
       await api.hr.unblockUser(selected.id);
-      setMessage("Faculty account re-enabled.");
+      toast({ title: "Success", description: "Faculty account re-enabled.", variant: "success" });
       await reloadUsers();
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message || err?.message || "Unblock failed",
-      );
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Unblock failed",
+        variant: "error",
+      });
     } finally {
-      setSaving(false);
+      setUnblocking(false);
     }
   }
 
@@ -318,18 +349,6 @@ function HrFacultyPage() {
         title="Faculty"
         subtitle="Manage faculty profiles, access, and status."
       />
-
-      {error ? (
-        <div className="mb-4 rounded-2xl border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="mb-4 rounded-2xl border border-success/20 bg-success-bg p-4 text-sm text-success">
-          {message}
-        </div>
-      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
@@ -476,9 +495,10 @@ function HrFacultyPage() {
                 type="button"
                 onClick={handleCreate}
                 disabled={saving}
-                className="inline-flex h-10 items-center justify-center rounded-lg bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
               >
-                Create faculty
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {saving ? "Creating..." : "Create faculty"}
               </button>
             </div>
           </section>
@@ -486,8 +506,8 @@ function HrFacultyPage() {
       </div>
 
       {selected ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 sm:p-8">
-          <div className="w-full max-w-8xl overflow-y-auto rounded-3xl border border-border bg-surface shadow-2xl">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4 sm:p-8">
+          <div className="mx-auto w-full max-w-8xl rounded-3xl border border-border bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
@@ -565,8 +585,9 @@ function HrFacultyPage() {
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {selected.facultyProfile ? (
-                      Object.entries(selected.facultyProfile).map(
-                        ([key, value]) => (
+                      Object.entries(selected.facultyProfile)
+                        .filter(([key]) => !PROFILE_SKIP_KEYS.has(key))
+                        .map(([key, value]) => (
                           <div
                             key={key}
                             className="rounded-xl border border-border bg-surface px-3 py-2"
@@ -683,9 +704,10 @@ function HrFacultyPage() {
                       type="button"
                       onClick={handleUpdate}
                       disabled={saving}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text"
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text disabled:opacity-60"
                     >
-                      Save changes
+                      {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {saving ? "Saving..." : "Save changes"}
                     </button>
                   </div>
                 </div>
@@ -704,32 +726,44 @@ function HrFacultyPage() {
                       placeholder="2026-12-31"
                       className="h-9 rounded-lg border border-border bg-surface px-3 text-xs"
                     />
-                    <div className="grid gap-2 sm:grid-cols-1">
-                      <button
-                        type="button"
-                        onClick={handleBlockTemporary}
-                        disabled={saving}
-                        className="inline-flex h-9 items-center justify-center rounded-lg bg-warning px-3 text-xs font-semibold text-white"
-                      >
-                        Temporarily disable
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleBlockPermanent}
-                        disabled={saving}
-                        className="inline-flex h-9 items-center justify-center rounded-lg bg-danger px-3 text-xs font-semibold text-white"
-                      >
-                        Permanently block
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleUnblock}
-                        disabled={saving}
-                        className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text"
-                      >
-                        Re-enable access
-                      </button>
-                    </div>
+                    {(() => {
+                      const isLocked = !!(
+                        selected.lockedUntil &&
+                        new Date(selected.lockedUntil).getTime() > Date.now()
+                      );
+                      const anyBusy = blockingTemp || blockingPerm || unblocking || saving;
+                      return (
+                        <div className="grid gap-2 sm:grid-cols-1">
+                          <button
+                            type="button"
+                            onClick={!isLocked ? handleBlockTemporary : undefined}
+                            disabled={isLocked || anyBusy}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-warning px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {blockingTemp && <Loader2 className="h-3 w-3 animate-spin" />}
+                            {blockingTemp ? "Disabling..." : isLocked ? "Account disabled" : "Temporarily disable"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={!isLocked ? handleBlockPermanent : undefined}
+                            disabled={isLocked || anyBusy}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-danger px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {blockingPerm && <Loader2 className="h-3 w-3 animate-spin" />}
+                            {blockingPerm ? "Blocking..." : isLocked ? "Account disabled" : "Permanently block"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUnblock}
+                            disabled={anyBusy}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text disabled:opacity-60"
+                          >
+                            {unblocking && <Loader2 className="h-3 w-3 animate-spin" />}
+                            {unblocking ? "Enabling..." : "Re-enable access"}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
