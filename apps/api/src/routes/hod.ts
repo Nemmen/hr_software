@@ -559,66 +559,67 @@ router.put(
         select: { id: true },
       });
 
-      await prisma.$transaction(async (transaction) => {
-        for (const reviewed of parsed.items) {
-          const existing = byId.get(reviewed.itemId);
-          if (!existing) {
-            continue;
-          }
-
-          const baseNotes = parseItemNotes(existing.notes);
-          const nextNotes = {
-            ...baseNotes,
-            hodReview: {
-              originalPoints: existing.points,
-              approvedPoints: reviewed.approvedPoints,
-              remark: reviewed.remark?.trim() || null,
-              reviewedBy: hodId,
-              reviewedAt: new Date().toISOString(),
-            },
-          };
-
-          await transaction.appraisalItem.update({
-            where: { id: reviewed.itemId },
-            data: {
-              points: reviewed.approvedPoints,
-              notes: JSON.stringify(nextNotes),
-            },
-          });
+      // Update item notes outside the transaction to avoid interactive-transaction timeout
+      for (const reviewed of parsed.items) {
+        const existing = byId.get(reviewed.itemId);
+        if (!existing) {
+          continue;
         }
 
-        if (committees.length > 0) {
-          await transaction.committeeAssignment.deleteMany({
-            where: { appraisalId },
-          });
+        const baseNotes = parseItemNotes(existing.notes);
+        const nextNotes = {
+          ...baseNotes,
+          hodReview: {
+            originalPoints: existing.points,
+            approvedPoints: reviewed.approvedPoints,
+            remark: reviewed.remark?.trim() || null,
+            reviewedBy: hodId,
+            reviewedAt: new Date().toISOString(),
+          },
+        };
 
-          await transaction.committeeAssignment.createMany({
-            data: committees.map((committee) => ({
-              committeeId: committee.id,
-              appraisalId,
-            })),
-          });
-        }
+        await prisma.appraisalItem.update({
+          where: { id: reviewed.itemId },
+          data: {
+            points: reviewed.approvedPoints,
+            notes: JSON.stringify(nextNotes),
+          },
+        });
+      }
 
-        await transaction.appraisal.update({
+      // Batch transaction for atomic status update + committee assignment reset
+      const hodRemarksJson = JSON.stringify({
+        overallRemark: parsed.overallRemark?.trim() || null,
+        additionalPoints: parsed.additionalPoints,
+        additionalPointsRemark: parsed.additionalPointsRemark?.trim() || null,
+        hasDeduction,
+        reviewedBy: hodId,
+        reviewedAt: new Date().toISOString(),
+      });
+
+      await prisma.$transaction([
+        ...(committees.length > 0
+          ? [
+              prisma.committeeAssignment.deleteMany({ where: { appraisalId } }),
+              prisma.committeeAssignment.createMany({
+                data: committees.map((committee) => ({
+                  committeeId: committee.id,
+                  appraisalId,
+                })),
+              }),
+            ]
+          : []),
+        prisma.appraisal.update({
           where: { id: appraisalId },
           data: {
             status: "ADMIN_REVIEW",
             locked: true,
             finalScore: totalApproved,
             finalPercent: incrementPercent,
-            hodRemarks: JSON.stringify({
-              overallRemark: parsed.overallRemark?.trim() || null,
-              additionalPoints: parsed.additionalPoints,
-              additionalPointsRemark:
-                parsed.additionalPointsRemark?.trim() || null,
-              hasDeduction,
-              reviewedBy: hodId,
-              reviewedAt: new Date().toISOString(),
-            }),
+            hodRemarks: hodRemarksJson,
           },
-        });
-      });
+        }),
+      ]);
 
       await writeAuditLog({
         actorId: hodId,
