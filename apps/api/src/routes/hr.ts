@@ -429,39 +429,39 @@ router.put(
         0,
       );
 
-      await prisma.$transaction(async (transaction) => {
-        for (const reviewed of parsed.items) {
-          const existing = byId.get(reviewed.itemId);
-          if (!existing) continue;
+      for (const reviewed of parsed.items) {
+        const existing = byId.get(reviewed.itemId);
+        if (!existing) continue;
 
-          const baseNotes = parseItemNotes(existing.notes);
-          const nextNotes = {
-            ...baseNotes,
-            hrReview: {
-              approvedPoints: reviewed.approvedPoints,
-              remark: reviewed.remark?.trim() || null,
-              reviewedBy: actorId,
-              reviewedAt: new Date().toISOString(),
-            },
-          } as Record<string, unknown>;
+        const baseNotes = parseItemNotes(existing.notes);
+        const nextNotes = {
+          ...baseNotes,
+          hrReview: {
+            approvedPoints: reviewed.approvedPoints,
+            remark: reviewed.remark?.trim() || null,
+            reviewedBy: actorId,
+            reviewedAt: new Date().toISOString(),
+          },
+        } as Record<string, unknown>;
 
-          await transaction.appraisalItem.update({
-            where: { id: reviewed.itemId },
-            data: {
-              points: reviewed.approvedPoints,
-              notes: JSON.stringify(nextNotes),
-            },
-          });
-        }
+        await prisma.appraisalItem.update({
+          where: { id: reviewed.itemId },
+          data: {
+            points: reviewed.approvedPoints,
+            notes: JSON.stringify(nextNotes),
+          },
+        });
+      }
 
-        await transaction.appraisal.update({
+      await prisma.$transaction([
+        prisma.appraisal.update({
           where: { id: appraisalId },
           data: {
             status: "ADMIN_REVIEW",
             finalScore: totalApproved,
           },
-        });
-      });
+        }),
+      ]);
 
       await writeAuditLog({
         actorId,

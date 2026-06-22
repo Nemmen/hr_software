@@ -963,35 +963,35 @@ router.put(
         parsed.items.reduce((sum, item) => sum + item.approvedPoints, 0) +
         (parsed.additionalPoints ?? 0);
 
-      await prisma.$transaction(async (transaction) => {
-        for (const reviewed of parsed.items) {
-          const existing = byId.get(reviewed.itemId);
-          if (!existing) {
-            continue;
-          }
+      // Update items outside the transaction to avoid the 5-second interactive timeout
+      for (const reviewed of parsed.items) {
+        const existing = byId.get(reviewed.itemId);
+        if (!existing) continue;
 
-          const baseNotes = parseItemNotes(existing.notes);
-          const nextNotes = {
-            ...baseNotes,
-            committeeReview: {
-              approvedPoints: reviewed.approvedPoints,
-              remark: reviewed.remark?.trim() || null,
-              reviewedBy: committeeId,
-              reviewedAt: new Date().toISOString(),
-            },
-          };
+        const baseNotes = parseItemNotes(existing.notes);
+        const nextNotes = {
+          ...baseNotes,
+          committeeReview: {
+            approvedPoints: reviewed.approvedPoints,
+            remark: reviewed.remark?.trim() || null,
+            reviewedBy: committeeId,
+            reviewedAt: new Date().toISOString(),
+          },
+        };
 
-          await transaction.appraisalItem.update({
-            where: { id: reviewed.itemId },
-            data: {
-              points: reviewed.approvedPoints,
-              notes: JSON.stringify(nextNotes),
-            },
-          });
-        }
+        await prisma.appraisalItem.update({
+          where: { id: reviewed.itemId },
+          data: {
+            points: reviewed.approvedPoints,
+            notes: JSON.stringify(nextNotes),
+          },
+        });
+      }
 
-        if (isFinalSubmit) {
-          await transaction.appraisal.update({
+      // Only the final status update needs to be atomic
+      if (isFinalSubmit) {
+        await prisma.$transaction([
+          prisma.appraisal.update({
             where: { id: appraisalId },
             data: {
               status: "HR_FINALIZED",
@@ -1004,9 +1004,9 @@ router.put(
                 reviewedAt: new Date().toISOString(),
               }),
             },
-          });
-        }
-      });
+          }),
+        ]);
+      }
 
       await writeAuditLog({
         actorId: committeeId,
