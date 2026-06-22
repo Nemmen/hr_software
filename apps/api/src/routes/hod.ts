@@ -555,6 +555,10 @@ router.put(
         parsed.additionalPoints;
       const incrementPercent = facultyIncrement(totalApproved);
 
+      const committees = await prisma.committee.findMany({
+        select: { id: true },
+      });
+
       await prisma.$transaction(async (transaction) => {
         for (const reviewed of parsed.items) {
           const existing = byId.get(reviewed.itemId);
@@ -582,10 +586,6 @@ router.put(
             },
           });
         }
-
-        const committees = await transaction.committee.findMany({
-          select: { id: true },
-        });
 
         if (committees.length > 0) {
           await transaction.committeeAssignment.deleteMany({
