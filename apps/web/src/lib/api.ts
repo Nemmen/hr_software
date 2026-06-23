@@ -33,6 +33,7 @@ export interface SessionUser {
   roles: Role[];
   departmentId?: string | null;
   department?: { id: string; name: string } | null;
+  mustChangePassword?: boolean;
 }
 
 export interface HrDepartmentMember {
@@ -377,6 +378,8 @@ export const api = {
     logout: () => unwrap<{ message: string }>(apiClient.post("/auth/logout")),
     refresh: () =>
       unwrap<{ accessToken: string }>(apiClient.post("/auth/refresh")),
+    changePassword: (data: { currentPassword: string; newPassword: string }) =>
+      unwrap<{ message: string }>(apiClient.post("/auth/change-password", data)),
   },
   appraisals: {
     list: () => unwrap<AppraisalSummary[]>(apiClient.get("/appraisals")),
@@ -526,6 +529,8 @@ export const api = {
       ),
     unblockUser: (id: string) =>
       unwrap<Record<string, unknown>>(apiClient.put(`/hr/users/${id}/unblock`)),
+    changeUserPassword: (id: string, newPassword: string) =>
+      unwrap<{ message: string }>(apiClient.put(`/hr/users/${id}/change-password`, { newPassword })),
     getDepartments: () =>
       unwrap<HrDepartmentSummary[]>(apiClient.get("/hr/departments")),
     createDepartment: (data: {

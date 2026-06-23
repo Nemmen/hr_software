@@ -1,7 +1,7 @@
-// apps/web/src/components/layout/AppShell.tsx
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { getPrimaryRole, type UiRole } from "@/lib/utils/routing";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -15,7 +15,19 @@ export function AppShell({
   role?: UiRole;
 }) {
   const { session } = useAuthStore();
+  const router = useRouter();
+  const pathname = usePathname();
   const resolvedRole = role ?? getPrimaryRole(session?.user.roles ?? []);
+
+  useEffect(() => {
+    if (session?.user.mustChangePassword && pathname !== "/change-password") {
+      router.replace("/change-password");
+    }
+  }, [session, pathname, router]);
+
+  if (session?.user.mustChangePassword) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">

@@ -10,6 +10,7 @@ export interface AuthSession {
         roles: string[];
         departmentId?: string | null;
         department?: { id: string; name: string } | null;
+        mustChangePassword?: boolean;
     };
 }
 

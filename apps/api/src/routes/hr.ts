@@ -1,5 +1,6 @@
 import express from "express";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import {
   authenticateRequest,
   AuthenticatedRequest,
@@ -671,6 +672,7 @@ router.post(
         lastName: input.lastName,
         phone: undefined,
         departmentId: input.departmentId,
+        mustChangePassword: true,
       } as any);
 
       // assign roles if present
@@ -744,6 +746,57 @@ router.put(
         message: "User updated",
         data: { id: user.id, email: user.email },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// HR changes password for any non-admin user
+const hrChangePasswordSchema = z.object({
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+router.put(
+  "/users/:userId/change-password",
+  authenticateRequest,
+  requireRoles("HR", "SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { userId } = req.params;
+      const { newPassword } = hrChangePasswordSchema.parse(req.body ?? {});
+
+      const target = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { roles: true },
+      });
+      if (!target) {
+        res.status(404).json({ success: false, message: "User not found" });
+        return;
+      }
+
+      const protectedRoles = ["SUPER_ADMIN", "ADMIN"];
+      const hasProtectedRole = target.roles.some((r) => protectedRoles.includes(r.role));
+      if (hasProtectedRole) {
+        res.status(403).json({ success: false, message: "Cannot change password for admin accounts" });
+        return;
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 12);
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: newHash, passwordChangedAt: new Date(), mustChangePassword: true },
+      });
+
+      await writeAuditLog({
+        actorId: req.auth?.sub || "",
+        action: "hr.user.password_changed",
+        resource: "User",
+        resourceId: userId,
+        meta: { targetEmail: target.email },
+      });
+
+      res.json({ success: true, message: "Password changed successfully" });
     } catch (error) {
       next(error);
     }

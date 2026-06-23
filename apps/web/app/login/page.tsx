@@ -72,6 +72,10 @@ export default function LoginPage() {
         accessToken: response.data.accessToken,
         user: response.data.user,
       });
+      if (response.data.user.mustChangePassword) {
+        router.push("/change-password");
+        return;
+      }
       let nextPath = "/profile?complete=1";
       try {
         nextPath = await resolvePostLoginPath(response.data.user.roles);
@@ -213,7 +217,7 @@ export default function LoginPage() {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-3 text-sm">
               <label className="flex items-center gap-2 text-text-2">
                 <input
                   type="checkbox"
@@ -221,12 +225,6 @@ export default function LoginPage() {
                 />
                 Remember me
               </label>
-              <a
-                href="mailto:hr@svgoi.org"
-                className="text-brand transition hover:text-brand-dark"
-              >
-                Forgot password?
-              </a>
             </div>
 
             <button

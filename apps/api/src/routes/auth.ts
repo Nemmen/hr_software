@@ -1,4 +1,5 @@
 import express from 'express';
+import { z } from 'zod';
 import {
     forgotPasswordSchema,
     loginSchema,
@@ -13,6 +14,9 @@ import {
     requestPasswordReset,
     resetPassword
 } from '../services/authService';
+import { authenticateRequest, type AuthenticatedRequest } from '../middleware/rbac';
+import { prisma } from '../lib/prisma';
+import bcrypt from 'bcryptjs';
 
 const router: express.Router = express.Router();
 
@@ -79,7 +83,8 @@ router.post('/login', async (req, res, next) => {
                     lastName: session.user.lastName,
                     roles: session.user.roles.map((r: any) => r.role),
                     departmentId: session.user.departmentId,
-                    department: session.user.department
+                    department: session.user.department,
+                    mustChangePassword: session.user.mustChangePassword ?? false,
                 }
             }
         });
@@ -143,6 +148,44 @@ router.post('/reset-password', async (req, res, next) => {
         const parsed = resetPasswordSchema.parse(req.body);
         await resetPassword(parsed, getContext(req));
         res.json({ success: true, message: 'Password updated' });
+    } catch (error) {
+        next(error);
+    }
+});
+
+const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+router.post('/change-password', authenticateRequest, async (req: AuthenticatedRequest, res, next) => {
+    try {
+        const userId = req.auth?.sub;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required' });
+            return;
+        }
+        const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            res.status(404).json({ success: false, message: 'User not found' });
+            return;
+        }
+
+        const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!valid) {
+            res.status(400).json({ success: false, message: 'Current password is incorrect' });
+            return;
+        }
+
+        const newHash = await bcrypt.hash(newPassword, 12);
+        await prisma.user.update({
+            where: { id: userId },
+            data: { passwordHash: newHash, passwordChangedAt: new Date(), mustChangePassword: false },
+        });
+
+        res.json({ success: true, message: 'Password changed successfully' });
     } catch (error) {
         next(error);
     }

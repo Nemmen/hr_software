@@ -159,6 +159,9 @@ function HrFacultyPage() {
     departmentId: "",
   });
   const [blockUntil, setBlockUntil] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [newPasswordForm, setNewPasswordForm] = useState({ password: "", confirm: "" });
+  const [showPwModal, setShowPwModal] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -340,6 +343,33 @@ function HrFacultyPage() {
       });
     } finally {
       setUnblocking(false);
+    }
+  }
+
+  async function handleChangePassword() {
+    if (!selected) return;
+    if (newPasswordForm.password.length < 8) {
+      toast({ title: "Error", description: "Password must be at least 8 characters.", variant: "error" });
+      return;
+    }
+    if (newPasswordForm.password !== newPasswordForm.confirm) {
+      toast({ title: "Error", description: "Passwords do not match.", variant: "error" });
+      return;
+    }
+    try {
+      setChangingPassword(true);
+      await api.hr.changeUserPassword(selected.id, newPasswordForm.password);
+      toast({ title: "Success", description: "Password changed. User will be asked to set a new password on next login.", variant: "success" });
+      setShowPwModal(false);
+      setNewPasswordForm({ password: "", confirm: "" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || err?.message || "Failed to change password",
+        variant: "error",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -736,6 +766,14 @@ function HrFacultyPage() {
                         <div className="grid gap-2 sm:grid-cols-1">
                           <button
                             type="button"
+                            onClick={() => { setShowPwModal(true); setNewPasswordForm({ password: "", confirm: "" }); }}
+                            disabled={anyBusy}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-semibold text-white disabled:opacity-60"
+                          >
+                            Change Password
+                          </button>
+                          <button
+                            type="button"
                             onClick={!isLocked ? handleBlockTemporary : undefined}
                             disabled={isLocked || anyBusy}
                             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-warning px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -771,6 +809,60 @@ function HrFacultyPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Change Password Modal */}
+      {showPwModal && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-xl">
+            <h3 className="font-display text-base font-semibold text-text">
+              Change Password — {selected.firstName} {selected.lastName}
+            </h3>
+            <p className="mt-1 text-xs text-text-3">
+              The user will be required to change their password on next login.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-text">New Password</label>
+                <input
+                  type="password"
+                  value={newPasswordForm.password}
+                  onChange={(e) => setNewPasswordForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="At least 8 characters"
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text">Confirm Password</label>
+                <input
+                  type="password"
+                  value={newPasswordForm.confirm}
+                  onChange={(e) => setNewPasswordForm((f) => ({ ...f, confirm: e.target.value }))}
+                  placeholder="Repeat new password"
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand/30"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleChangePassword()}
+                disabled={changingPassword}
+                className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-brand text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {changingPassword && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {changingPassword ? "Saving..." : "Set Password"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPwModal(false)}
+                className="h-9 rounded-lg border border-border px-4 text-sm font-medium text-text-2 hover:bg-surface-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

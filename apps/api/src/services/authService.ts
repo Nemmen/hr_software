@@ -97,7 +97,7 @@ async function loadUserById(userId: string) {
   });
 }
 
-export async function registerUser(input: RegisterInput) {
+export async function registerUser(input: RegisterInput & { mustChangePassword?: boolean }) {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
   });
@@ -115,7 +115,7 @@ export async function registerUser(input: RegisterInput) {
       phone: input.phone,
       departmentId: input.departmentId,
       passwordChangedAt: new Date(),
-      mustChangePassword: false,
+      mustChangePassword: input.mustChangePassword ?? false,
     },
   });
 
