@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, CheckCircle2, Clock } from "lucide-react";
@@ -31,6 +31,31 @@ function SuperAdminAppraislalsPage() {
     Array<{ id: string; name: string }>
   >([]);
   const [cycles, setCycles] = useState<Array<{ id: string; name: string }>>([]);
+  const [stats, setStats] = useState({
+    pendingCount: 0,
+    approvedCount: 0,
+    totalSalaryImpact: 0,
+    totalAppraisals: 0,
+  });
+
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await api.superAdmin.getStats({
+        departmentId: departmentFilter || undefined,
+        cycleId: cycleFilter || undefined,
+      });
+      setStats(
+        response.data ?? {
+          pendingCount: 0,
+          approvedCount: 0,
+          totalSalaryImpact: 0,
+          totalAppraisals: 0,
+        },
+      );
+    } catch (err) {
+      console.error("Failed to load appraisal stats:", err);
+    }
+  }, [departmentFilter, cycleFilter]);
 
   const loadAppraisals = useCallback(async () => {
     try {
@@ -77,6 +102,14 @@ function SuperAdminAppraislalsPage() {
     void loadAppraisals();
   }, [session, loadAppraisals]);
 
+  useEffect(() => {
+    if (!session || !session.user.roles.includes("SUPER_ADMIN")) {
+      return;
+    }
+
+    void loadStats();
+  }, [session, loadStats]);
+
   async function loadFilters() {
     try {
       const [deptsRes, cyclesRes] = await Promise.all([
@@ -90,24 +123,8 @@ function SuperAdminAppraislalsPage() {
     }
   }
 
-  const pendingCount = useMemo(
-    () => appraisals.filter((a) => a.status === "ADMIN_REVIEW" || a.status === "SUPER_ADMIN_PENDING").length,
-    [appraisals],
-  );
-
-  const approvedCount = useMemo(
-    () => appraisals.filter((a) => a.status === "FULLY_APPROVED").length,
-    [appraisals],
-  );
-
-  const totalSalaryImpact = useMemo(() => {
-    return appraisals.reduce((sum, a) => {
-      const currentSalary = a.currentSalary ?? 0;
-      const percent = a.finalPercent ?? 0;
-      const increment = (currentSalary * percent) / 100;
-      return sum + increment;
-    }, 0);
-  }, [appraisals]);
+  const { pendingCount, approvedCount, totalSalaryImpact, totalAppraisals } =
+    stats;
 
   return (
     <AppShell role={role}>
@@ -156,9 +173,9 @@ function SuperAdminAppraislalsPage() {
             Total Appraisals
           </p>
           <p className="mt-2 text-2xl font-bold text-text">
-            {appraisals.length}
+            {totalAppraisals}
           </p>
-          <p className="text-xs text-text-3">In this view</p>
+          <p className="text-xs text-text-3">Across all statuses</p>
         </div>
       </div>
 

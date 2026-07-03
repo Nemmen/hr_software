@@ -659,6 +659,23 @@ export const api = {
         ),
       );
     },
+    getStats: (params?: { cycleId?: string; departmentId?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.cycleId) query.append("cycleId", params.cycleId);
+      if (params?.departmentId)
+        query.append("departmentId", params.departmentId);
+      const queryString = query.toString();
+      return unwrap<{
+        pendingCount: number;
+        approvedCount: number;
+        totalSalaryImpact: number;
+        totalAppraisals: number;
+      }>(
+        apiClient.get(
+          `/admin/appraisals/stats${queryString ? `?${queryString}` : ""}`,
+        ),
+      );
+    },
     getById: (id: string) =>
       unwrap<SuperAdminAppraisalDetail>(
         apiClient.get(`/admin/appraisals/${id}`),

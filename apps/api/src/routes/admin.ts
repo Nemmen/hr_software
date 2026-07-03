@@ -335,6 +335,15 @@ router.get(
 
 // SUPER ADMIN APPRAISAL APPROVAL ROUTES
 
+// Statuses relevant to the Super Admin approval dashboard (excludes DRAFT/SUBMITTED/
+// HOD_REVIEW/COMMITTEE_REVIEW/REJECTED/CLOSED, which never reach this queue).
+const SUPER_ADMIN_DASHBOARD_STATUSES = [
+  "ADMIN_REVIEW",
+  "SUPER_ADMIN_PENDING",
+  "FULLY_APPROVED",
+  "HR_FINALIZED",
+];
+
 // List appraisals pending Super Admin approval
 router.get(
   "/appraisals",
@@ -344,19 +353,18 @@ router.get(
     try {
       const { cycleId, departmentId, status } = req.query;
 
-      // Map frontend filter values to actual DB statuses
-      const requestedStatus = status as string;
-      const statusMap: Record<string, string> = {
-        SUPER_ADMIN_PENDING: "ADMIN_REVIEW",
-        ADMIN_REVIEW: "ADMIN_REVIEW",
-        FULLY_APPROVED: "FULLY_APPROVED",
-        HR_FINALIZED: "HR_FINALIZED",
-      };
-      const dbStatus = statusMap[requestedStatus] ?? "ADMIN_REVIEW";
+      const requestedStatus = status as string | undefined;
+      const where: any = {};
 
-      const where: any = {
-        status: dbStatus as any,
-      };
+      if (requestedStatus === "SUPER_ADMIN_PENDING" || requestedStatus === "ADMIN_REVIEW") {
+        // "Pending" spans both statuses — appraisals can sit in either depending on workflow stage.
+        where.status = { in: ["ADMIN_REVIEW", "SUPER_ADMIN_PENDING"] };
+      } else if (requestedStatus === "FULLY_APPROVED" || requestedStatus === "HR_FINALIZED") {
+        where.status = requestedStatus;
+      } else {
+        // "All Statuses" (empty) or unrecognized value — show everything relevant to this dashboard.
+        where.status = { in: SUPER_ADMIN_DASHBOARD_STATUSES };
+      }
 
       if (cycleId) {
         where.cycleId = cycleId as string;
@@ -412,6 +420,67 @@ router.get(
         success: true,
         message: "Super admin appraisal list",
         data: payload,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// Aggregate stats for the summary cards — always computed across all statuses
+// relevant to this dashboard (ignores the status filter, honors cycle/department filters)
+// so the cards show true totals instead of just whatever the status filter narrowed to.
+router.get(
+  "/appraisals/stats",
+  authenticateRequest,
+  requireRoles("SUPER_ADMIN"),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { cycleId, departmentId } = req.query;
+
+      const where: any = { status: { in: SUPER_ADMIN_DASHBOARD_STATUSES } };
+      if (cycleId) {
+        where.cycleId = cycleId as string;
+      }
+      if (departmentId) {
+        where.user = { departmentId: departmentId as string };
+      }
+
+      const appraisals = await prisma.appraisal.findMany({
+        where,
+        select: {
+          status: true,
+          finalPercent: true,
+          user: {
+            select: { facultyProfile: { select: { currentSalary: true } } },
+          },
+        },
+      });
+
+      let pendingCount = 0;
+      let approvedCount = 0;
+      let totalSalaryImpact = 0;
+
+      for (const appraisal of appraisals) {
+        if (appraisal.status === "ADMIN_REVIEW" || appraisal.status === "SUPER_ADMIN_PENDING") {
+          pendingCount++;
+        } else if (appraisal.status === "FULLY_APPROVED") {
+          approvedCount++;
+        }
+        const currentSalary = appraisal.user.facultyProfile?.currentSalary ?? 0;
+        const percent = appraisal.finalPercent ?? 0;
+        totalSalaryImpact += (currentSalary * percent) / 100;
+      }
+
+      res.json({
+        success: true,
+        message: "Super admin appraisal stats",
+        data: {
+          pendingCount,
+          approvedCount,
+          totalSalaryImpact,
+          totalAppraisals: appraisals.length,
+        },
       });
     } catch (error) {
       next(error);
