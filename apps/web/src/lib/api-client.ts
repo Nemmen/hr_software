@@ -25,15 +25,14 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers["Authorization"] = `Bearer ${session.accessToken}`;
   }
 
-  if (typeof document !== "undefined") {
-    const csrfToken = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("csrf="))
-      ?.split("=")[1];
-
-    if (csrfToken) {
-      config.headers["X-CSRF-Token"] = csrfToken;
-    }
+  // The CSRF cookie is set by the API's own domain (a different vercel.app
+  // subdomain in production), so the frontend page can never read it via
+  // document.cookie — cookie readability is scoped to the setting domain,
+  // not just SameSite. The server hands the value back in the login/refresh
+  // response body instead, and we echo it back here as a header (the browser
+  // still auto-sends the cookie itself for the server-side double-submit check).
+  if (session?.csrfToken) {
+    config.headers["X-CSRF-Token"] = session.csrfToken;
   }
   return config;
 });
@@ -58,12 +57,13 @@ async function refreshAccessToken(): Promise<string> {
       .post("/auth/refresh", undefined, { _isRefreshCall: true } as any)
       .then((res) => {
         const newToken = res.data?.data?.accessToken as string | undefined;
-        if (!newToken) {
-          throw new Error("Refresh response missing accessToken");
+        const newCsrfToken = res.data?.data?.csrfToken as string | undefined;
+        if (!newToken || !newCsrfToken) {
+          throw new Error("Refresh response missing accessToken/csrfToken");
         }
         const { session, setSession } = useAuthStore.getState();
         if (session) {
-          setSession({ ...session, accessToken: newToken });
+          setSession({ ...session, accessToken: newToken, csrfToken: newCsrfToken });
         }
         return newToken;
       })

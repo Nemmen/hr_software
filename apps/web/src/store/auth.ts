@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export interface AuthSession {
     accessToken: string;
+    csrfToken: string;
     user: {
         id: string;
         email: string;
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     setSession: (session) => {
         if (session) {
             localStorage.setItem('accessToken', session.accessToken);
+            localStorage.setItem('csrfToken', session.csrfToken);
             localStorage.setItem('user', JSON.stringify(session.user));
         }
         set({
@@ -42,6 +44,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     logout: () => {
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('csrfToken');
         localStorage.removeItem('user');
         set({
             session: null,
@@ -56,13 +59,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     hydrate: () => {
         const accessToken = localStorage.getItem('accessToken');
+        const csrfToken = localStorage.getItem('csrfToken');
         const userStr = localStorage.getItem('user');
 
-        if (accessToken && userStr) {
+        if (accessToken && csrfToken && userStr) {
             try {
                 const user = JSON.parse(userStr);
                 set({
-                    session: { accessToken, user },
+                    session: { accessToken, csrfToken, user },
                     isAuthenticated: true,
                     isHydrated: true
                 });

@@ -41,17 +41,24 @@ function requireCsrf(req: express.Request, res: express.Response) {
 
 function setSessionCookies(res: express.Response, refreshToken: string, csrfToken: string) {
     const secure = process.env.NODE_ENV === 'production';
+    // Frontend and API are deployed on different vercel.app subdomains, which are
+    // cross-site to each other (vercel.app is on the public suffix list). SameSite=Lax
+    // cookies are never sent on cross-site XHR/fetch, so the refresh cookie would
+    // silently stop working in production — SameSite=None (+ Secure, required by spec)
+    // is needed there. Locally, frontend/API share the "localhost" site, so Lax is fine
+    // and avoids requiring HTTPS in dev.
+    const sameSite = secure ? 'none' as const : 'lax' as const;
     res.cookie('rt', refreshToken, {
         httpOnly: true,
         secure,
-        sameSite: 'lax',
+        sameSite,
         path: '/api/v1/auth/refresh'
     });
 
     res.cookie('csrf', csrfToken, {
         httpOnly: false,
         secure,
-        sameSite: 'lax',
+        sameSite,
         path: '/'
     });
 }
@@ -76,6 +83,7 @@ router.post('/login', async (req, res, next) => {
             message: 'Logged in',
             data: {
                 accessToken: session.accessToken,
+                csrfToken: session.csrfToken,
                 user: {
                     id: session.user.id,
                     email: session.user.email,
@@ -107,7 +115,11 @@ router.post('/refresh', async (req, res, next) => {
 
         const session = await refreshSession(refreshToken, getContext(req));
         setSessionCookies(res, session.refreshToken, session.csrfToken);
-        res.json({ success: true, message: 'Session refreshed', data: { accessToken: session.accessToken } });
+        res.json({
+            success: true,
+            message: 'Session refreshed',
+            data: { accessToken: session.accessToken, csrfToken: session.csrfToken },
+        });
     } catch (error) {
         next(error);
     }

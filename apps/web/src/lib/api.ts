@@ -84,6 +84,7 @@ export interface HrUserSummary {
 
 export interface AuthResponse {
   accessToken: string;
+  csrfToken: string;
   user: SessionUser;
 }
 
@@ -377,7 +378,9 @@ export const api = {
     },
     logout: () => unwrap<{ message: string }>(apiClient.post("/auth/logout")),
     refresh: () =>
-      unwrap<{ accessToken: string }>(apiClient.post("/auth/refresh")),
+      unwrap<{ accessToken: string; csrfToken: string }>(
+        apiClient.post("/auth/refresh"),
+      ),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
       unwrap<{ message: string }>(apiClient.post("/auth/change-password", data)),
   },

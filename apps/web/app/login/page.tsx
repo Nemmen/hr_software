@@ -70,6 +70,7 @@ export default function LoginPage() {
       const response = await api.auth.login(values);
       useAuthStore.getState().setSession({
         accessToken: response.data.accessToken,
+        csrfToken: response.data.csrfToken,
         user: response.data.user,
       });
       if (response.data.user.mustChangePassword) {
