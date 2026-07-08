@@ -23,6 +23,13 @@ import { api, type FacultyCycleSummary } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { toDriveViewerUrl } from "@/lib/utils/drive";
 import { getPrimaryRole } from "@/lib/utils/routing";
+import {
+  appraisalDraftKey,
+  clearAppraisalDraft,
+  hasMeaningfulDraftData,
+  loadAppraisalDraft,
+  saveAppraisalDraft,
+} from "@/lib/utils/appraisalDraft";
 import { useAuthStore } from "@/store/auth";
 import type {
   FacultyAppraisalPolicy,
@@ -164,6 +171,8 @@ function FacultyAppraisalRequestPage() {
   );
   const [confirmUploadOpen, setConfirmUploadOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -202,22 +211,40 @@ function FacultyAppraisalRequestPage() {
   async function openForm(entry: FacultyCycleSummary) {
     setSelectedCycle(entry);
     setFormLoading(true);
+    setDraftRestored(false);
+
+    const key = appraisalDraftKey(session?.user.id, entry.cycle.id);
+    setDraftKey(key);
 
     try {
       const policyResponse = await api.faculty.getAppraisalPolicy();
       setPolicy(policyResponse.data);
 
+      const draft = loadAppraisalDraft(key);
       const initialState: Record<string, CriterionState> = {};
       policyResponse.data.criteria.forEach((criterion) => {
+        const saved = draft?.[criterion.key];
+        const option = criterion.options.find(
+          (entry) => entry.value === saved?.selectedValue,
+        );
         initialState[criterion.key] = {
-          selectedValue: "",
-          points: 0,
+          selectedValue: saved?.selectedValue ?? "",
+          points: option?.points ?? 0,
           uploading: false,
-          evidence: null,
-          remarks: "",
+          evidence: saved?.evidence ?? null,
+          remarks: saved?.remarks ?? "",
         };
       });
       setCriteriaState(initialState);
+
+      if (hasMeaningfulDraftData(draft)) {
+        setDraftRestored(true);
+        toast({
+          title: "Draft restored",
+          description: "Continuing from where you left off.",
+          variant: "success",
+        });
+      }
     } catch (err: any) {
       toast({
         title: "Error",
@@ -234,7 +261,30 @@ function FacultyAppraisalRequestPage() {
     setSelectedCycle(null);
     setPolicy(null);
     setCriteriaState({});
+    setDraftKey(null);
+    setDraftRestored(false);
   }
+
+  useEffect(() => {
+    if (!draftKey || formLoading || !policy) return;
+
+    const handle = setTimeout(() => {
+      const data: Record<
+        string,
+        { selectedValue: string; remarks: string; evidence: CriterionState["evidence"] }
+      > = {};
+      Object.entries(criteriaState).forEach(([key, value]) => {
+        data[key] = {
+          selectedValue: value.selectedValue,
+          remarks: value.remarks,
+          evidence: value.evidence,
+        };
+      });
+      saveAppraisalDraft(draftKey, data);
+    }, 500);
+
+    return () => clearTimeout(handle);
+  }, [draftKey, formLoading, policy, criteriaState]);
 
   const totalPoints = useMemo(
     () =>
@@ -362,6 +412,9 @@ function FacultyAppraisalRequestPage() {
         .filter((item) => item.selectedValue !== "");
 
       await api.faculty.submitAppraisalRequest({ items });
+      if (draftKey) {
+        clearAppraisalDraft(draftKey);
+      }
       toast({
         title: "Success",
         description: "Appraisal submitted successfully.",
@@ -424,7 +477,11 @@ function FacultyAppraisalRequestPage() {
       <AppShell role={role}>
         <PageHeader
           title={`Submit Appraisal — ${selectedCycle.cycle.name}`}
-          subtitle="Select one option per criterion and upload supporting evidence."
+          subtitle={
+            draftRestored
+              ? "Restored your saved draft — continue where you left off."
+              : "Select one option per criterion and upload supporting evidence."
+          }
           actions={
             <button
               type="button"
@@ -617,6 +674,9 @@ function FacultyAppraisalRequestPage() {
                 <p className="text-sm text-text-2">
                   Total selected points: {totalPoints} | Expected increment:{" "}
                   {incrementPercent}%
+                  <span className="ml-2 text-xs text-text-3">
+                    Your progress is saved automatically.
+                  </span>
                 </p>
                 <button
                   type="button"
