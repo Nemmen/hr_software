@@ -12,7 +12,8 @@ import {
     refreshSession,
     registerUser,
     requestPasswordReset,
-    resetPassword
+    resetPassword,
+    REFRESH_TOKEN_TTL_DAYS
 } from '../services/authService';
 import { authenticateRequest, type AuthenticatedRequest } from '../middleware/rbac';
 import { prisma } from '../lib/prisma';
@@ -48,18 +49,24 @@ function setSessionCookies(res: express.Response, refreshToken: string, csrfToke
     // is needed there. Locally, frontend/API share the "localhost" site, so Lax is fine
     // and avoids requiring HTTPS in dev.
     const sameSite = secure ? 'none' as const : 'lax' as const;
+    // Without maxAge these default to session cookies, which browsers are free
+    // to evict on tab/background lifecycle events well before the 30-day token
+    // in the DB actually expires — give them a matching lifetime explicitly.
+    const maxAge = 1000 * 60 * 60 * 24 * REFRESH_TOKEN_TTL_DAYS;
     res.cookie('rt', refreshToken, {
         httpOnly: true,
         secure,
         sameSite,
-        path: '/api/v1/auth/refresh'
+        path: '/api/v1/auth/refresh',
+        maxAge
     });
 
     res.cookie('csrf', csrfToken, {
         httpOnly: false,
         secure,
         sameSite,
-        path: '/'
+        path: '/',
+        maxAge
     });
 }
 

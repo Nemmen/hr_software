@@ -1,6 +1,7 @@
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
-import { RoleName, User } from "@prisma/client";
+import { RefreshToken, RoleName, User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { writeAuditLog } from "../lib/audit";
 import {
@@ -21,7 +22,13 @@ import type {
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
 const LOCK_THRESHOLD = 5;
 const LOCK_MINUTES = 15;
-const REFRESH_TOKEN_TTL_DAYS = 30;
+export const REFRESH_TOKEN_TTL_DAYS = 30;
+// A page open in two tabs can each hold the same refresh token and race to
+// rotate it when the access token expires — the loser presents a token that's
+// already revoked a few milliseconds earlier by the winner. Tolerate reuse of
+// a just-rotated token within this window by walking to its replacement
+// instead of treating it as theft (which would nuke the whole session family).
+const REFRESH_REUSE_GRACE_MS = 30_000;
 
 type SessionContext = {
   ipAddress?: string;
@@ -271,6 +278,30 @@ export async function login(
   }
 }
 
+// Follows replacedById pointers from an already-rotated token to whichever
+// token is currently active in its family. Returns null if the chain is
+// broken, ends in a revoked/expired token, or the record was never rotated.
+async function findActiveDescendant(
+  record: RefreshToken,
+): Promise<RefreshToken | null> {
+  let node = record;
+  const visited = new Set([node.id]);
+
+  while (node.replacedById) {
+    if (visited.has(node.replacedById)) return null;
+    const next = await prisma.refreshToken.findUnique({
+      where: { id: node.replacedById },
+    });
+    if (!next) return null;
+    visited.add(next.id);
+    node = next;
+  }
+
+  if (node.id === record.id) return null;
+  if (node.revokedAt || node.expiresAt < new Date()) return null;
+  return node;
+}
+
 export async function refreshSession(
   refreshToken: string,
   context: SessionContext,
@@ -284,53 +315,69 @@ export async function refreshSession(
     throw new Error("Invalid refresh token");
   }
 
+  let activeRecord = currentRecord;
+
   if (currentRecord.revokedAt) {
-    await prisma.refreshToken.updateMany({
-      where: {
-        userId: currentRecord.userId,
-        familyId: currentRecord.familyId,
-        revokedAt: null,
-      },
-      data: { revokedAt: new Date() },
-    });
-    await writeAuditLog({
-      actorId: currentRecord.userId,
-      action: "auth.refresh.reuse_detected",
-      resource: "RefreshToken",
-      resourceId: currentRecord.id,
-      meta: {
-        familyId: currentRecord.familyId,
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent,
-      },
-    });
-    throw new Error("Refresh token reuse detected");
+    const withinGrace =
+      Date.now() - currentRecord.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS;
+    const descendant = withinGrace
+      ? await findActiveDescendant(currentRecord)
+      : null;
+
+    if (!descendant) {
+      await prisma.refreshToken.updateMany({
+        where: {
+          userId: currentRecord.userId,
+          familyId: currentRecord.familyId,
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
+      await writeAuditLog({
+        actorId: currentRecord.userId,
+        action: "auth.refresh.reuse_detected",
+        resource: "RefreshToken",
+        resourceId: currentRecord.id,
+        meta: {
+          familyId: currentRecord.familyId,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+        },
+      });
+      throw new Error("Refresh token reuse detected");
+    }
+
+    // Another tab already rotated this token moments ago — pick up from
+    // where it left off instead of punishing this tab for racing.
+    activeRecord = descendant;
   }
 
-  const user = await loadUserById(currentRecord.userId);
+  const user = await loadUserById(activeRecord.userId);
   if (!user) {
     throw new Error("Invalid refresh token");
   }
 
   const roles = user.roles.map((role) => role.role);
+  const newId = crypto.randomUUID();
   const newJti = createJti();
   const newRefreshToken = signRefreshToken({
     sub: user.id,
     roles,
-    familyId: currentRecord.familyId,
+    familyId: activeRecord.familyId,
     jti: newJti,
   } satisfies RefreshClaims);
 
   await prisma.$transaction([
     prisma.refreshToken.update({
-      where: { id: currentRecord.id },
-      data: { revokedAt: new Date(), lastUsedAt: new Date() },
+      where: { id: activeRecord.id },
+      data: { revokedAt: new Date(), lastUsedAt: new Date(), replacedById: newId },
     }),
     prisma.refreshToken.create({
       data: {
+        id: newId,
         userId: user.id,
         tokenHash: hashToken(newRefreshToken),
-        familyId: currentRecord.familyId,
+        familyId: activeRecord.familyId,
         jti: newJti,
         expiresAt: getRefreshExpiry(),
         userAgent: context.userAgent,
@@ -342,8 +389,8 @@ export async function refreshSession(
   const accessToken = signAccessToken({
     sub: user.id,
     roles,
-    sessionId: currentRecord.id,
-    familyId: currentRecord.familyId,
+    sessionId: newId,
+    familyId: activeRecord.familyId,
   });
   const csrfToken = createCsrfToken();
 
@@ -351,9 +398,9 @@ export async function refreshSession(
     actorId: user.id,
     action: "auth.refresh.success",
     resource: "RefreshToken",
-    resourceId: currentRecord.id,
+    resourceId: activeRecord.id,
     meta: {
-      familyId: currentRecord.familyId,
+      familyId: activeRecord.familyId,
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
     },
