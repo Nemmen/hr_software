@@ -23,6 +23,25 @@ const app: express.Express = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
+// Request timing instrumentation (Task 3 profiling). Logs total wall-clock time
+// per request so the ~20s prod delay is visible in Vercel function logs and can
+// be attributed to a specific route. Every request is logged with its duration;
+// requests over SLOW_REQUEST_MS are flagged so they're easy to grep. Set
+// REQUEST_TIMING=off to silence entirely.
+const SLOW_REQUEST_MS = Number(process.env.SLOW_REQUEST_MS || 3000);
+app.use((req, res, next) => {
+  if (process.env.REQUEST_TIMING === "off") return next();
+  const startedAt = process.hrtime.bigint();
+  res.on("finish", () => {
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const slow = elapsedMs >= SLOW_REQUEST_MS ? " SLOW" : "";
+    console.log(
+      `[timing]${slow} ${req.method} ${req.originalUrl} ${res.statusCode} ${elapsedMs.toFixed(0)}ms`,
+    );
+  });
+  next();
+});
+
 app.use(
   helmet({
     // Frontend and API run on different origins in dev (localhost:3000 -> localhost:4000).

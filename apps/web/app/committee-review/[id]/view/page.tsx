@@ -166,4 +166,9 @@ function CommitteeViewPage() {
   );
 }
 
-export default withAuth(CommitteeViewPage, ["COMMITTEE"]);
+export default withAuth(CommitteeViewPage, [
+  "COMMITTEE",
+  "COMMITTEE_ACADEMIC",
+  "COMMITTEE_RESEARCH",
+  "COMMITTEE_OTHER",
+]);

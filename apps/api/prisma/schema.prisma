@@ -13,9 +13,18 @@ enum RoleName {
   EMPLOYEE
   HOD
   COMMITTEE
+  COMMITTEE_ACADEMIC
+  COMMITTEE_RESEARCH
+  COMMITTEE_OTHER
   HR
   MANAGEMENT
   SUPER_ADMIN
+}
+
+enum AppraisalCategory {
+  ACADEMICS
+  RESEARCH
+  OTHERS
 }
 
 enum AppraisalStatus {
@@ -49,6 +58,7 @@ model User {
   appraisals    Appraisal[]
   memoDeductions MemoDeduction[]
   committees    Committee[] @relation("CommitteeMembers")
+  categoryApprovals CategoryApproval[] @relation("CategoryApprovals")
   auditLogs     AuditLog[]
   publications  Publication[]
   patents       Patent[]
@@ -197,6 +207,7 @@ model Appraisal {
   rejectionReason String?
   items          AppraisalItem[]
   committeeAssignments CommitteeAssignment[]
+  categoryApprovals CategoryApproval[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -214,12 +225,14 @@ model AppraisalItem {
   appraisal     Appraisal @relation(fields: [appraisalId], references: [id])
   appraisalId   String
   key           String   // e.g., "academics_average", "fdf_stp"
+  category      AppraisalCategory?  // Academic / Research / Other — drives per-committee review
   points        Int
   weight        Float
   notes         String?
   createdAt     DateTime @default(now())
 
   @@index([appraisalId])
+  @@index([appraisalId, category])
 }
 
 model ScoringConfig {
@@ -288,6 +301,28 @@ model CommitteeAssignment {
 
   @@index([appraisalId])
   @@index([committeeId])
+}
+
+// Per-category committee sign-off. Each appraisal in committee review has one
+// row per category (Academics / Research / Others). The appraisal only advances
+// to HR once all three are approved.
+model CategoryApproval {
+  id           String            @id @default(uuid())
+  appraisalId  String
+  appraisal    Appraisal         @relation(fields: [appraisalId], references: [id])
+  category     AppraisalCategory
+  approved     Boolean           @default(false)
+  approvedById String?
+  approvedBy   User?             @relation("CategoryApprovals", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  notes        String?
+  totalPoints  Int?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([appraisalId, category])
+  @@index([appraisalId])
+  @@index([approvedById])
 }
 
 model AuditLog {

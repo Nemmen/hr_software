@@ -19,6 +19,9 @@ export type Role =
   | "EMPLOYEE"
   | "HOD"
   | "COMMITTEE"
+  | "COMMITTEE_ACADEMIC"
+  | "COMMITTEE_RESEARCH"
+  | "COMMITTEE_OTHER"
   | "HR"
   | "ADMIN"
   | "SUPER_ADMIN"
@@ -215,6 +218,16 @@ export interface SuperAdminAppraisalSummary {
   itemsCount: number;
 }
 
+export interface AppraisalReviewTrailEntry {
+  stage: "faculty" | "hodReview" | "committeeReview" | "hrReview" | "adminReview";
+  stageLabel: string;
+  approvedPoints: number | null;
+  remark: string | null;
+  byId: string | null;
+  by: string | null;
+  at: string | null;
+}
+
 export interface FacultyAppraisalItemDetail {
   id: string;
   criterionKey: string;
@@ -222,6 +235,8 @@ export interface FacultyAppraisalItemDetail {
   selectedValue: string;
   selectedLabel: string;
   facultyPoints: number;
+  finalPoints?: number;
+  reviewTrail?: AppraisalReviewTrailEntry[];
   evidence: Array<{
     fileName?: string;
     url?: string;
@@ -234,6 +249,7 @@ export interface FacultyAppraisalItemDetail {
 export interface FacultyAppraisalDetail {
   id: string;
   status: AppraisalStatus;
+  finalized?: boolean;
   submittedAt?: string | null;
   items: FacultyAppraisalItemDetail[];
   finalScore?: number | null;
@@ -475,6 +491,33 @@ export const api = {
       unwrap<Record<string, unknown>>(
         apiClient.put(`/hod/committee/requests/${id}/reject`, { reason }),
       ),
+    // Per-category approval (Academic / Research / Other committee). Approves
+    // only the caller's category; backend auto-forwards to HR once all three
+    // categories are approved.
+    approveCategory: (
+      id: string,
+      data: {
+        items: Array<{
+          itemId: string;
+          approvedPoints: number;
+          remark?: string;
+        }>;
+        notes?: string;
+        category?: "ACADEMICS" | "RESEARCH" | "OTHERS";
+      },
+    ) =>
+      unwrap<{
+        appraisalId: string;
+        category: string;
+        categoryTotal: number;
+        combined: boolean;
+        status: string;
+        categoryApprovals: Array<{
+          category: string;
+          label: string;
+          approved: boolean;
+        }>;
+      }>(apiClient.put(`/appraisals/${id}/category-review`, data)),
   },
   hr: {
     getTeamAppraisals: (cycleId?: string) =>

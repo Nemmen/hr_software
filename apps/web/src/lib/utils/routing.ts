@@ -3,6 +3,9 @@ export type UiRole =
   | "EMPLOYEE"
   | "HOD"
   | "COMMITTEE"
+  | "COMMITTEE_ACADEMIC"
+  | "COMMITTEE_RESEARCH"
+  | "COMMITTEE_OTHER"
   | "HR"
   | "ADMIN"
   | "SUPER_ADMIN"
@@ -18,6 +21,9 @@ export function getRoleHomePath(role: UiRole): string {
     case "HOD":
       return "/hod-review";
     case "COMMITTEE":
+    case "COMMITTEE_ACADEMIC":
+    case "COMMITTEE_RESEARCH":
+    case "COMMITTEE_OTHER":
       return "/committee-review";
     case "SUPER_ADMIN":
       return "/super-admin-dashboard";
@@ -38,6 +44,9 @@ export function getPrimaryRole(roles: string[] = []): UiRole {
     "HR",
     "HOD",
     "COMMITTEE",
+    "COMMITTEE_ACADEMIC",
+    "COMMITTEE_RESEARCH",
+    "COMMITTEE_OTHER",
     "FACULTY",
     "EMPLOYEE",
     "MANAGEMENT",

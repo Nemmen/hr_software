@@ -27,6 +27,12 @@ interface AppraisalForReview {
   finalScore: number | null;
   totalSelectedPoints: number;
   itemsCount: number;
+  callerCategory?: string | null;
+  categoryApprovals?: Array<{
+    category: string;
+    label: string;
+    approved: boolean;
+  }>;
 }
 
 const ACTIVE_STATUSES = ["COMMITTEE_REVIEW"];
@@ -138,6 +144,27 @@ function CommitteeDashboardPage() {
                 <div className="mt-1">{getStatusBadge(appraisal.status)}</div>
               </div>
             </div>
+            {appraisal.categoryApprovals && appraisal.categoryApprovals.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {appraisal.categoryApprovals.map((c) => (
+                  <span
+                    key={c.category}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      c.approved
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-bg text-text-3"
+                    }`}
+                  >
+                    {c.approved ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <span className="h-2 w-2 rounded-full border border-text-3" />
+                    )}
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <p className="mt-2 text-xs text-text-3">Submitted: {new Date(appraisal.submittedAt).toLocaleDateString()}</p>
           </div>
           <Link
@@ -245,4 +272,9 @@ function CommitteeDashboardPage() {
   );
 }
 
-export default withAuth(CommitteeDashboardPage, ["COMMITTEE"]);
+export default withAuth(CommitteeDashboardPage, [
+  "COMMITTEE",
+  "COMMITTEE_ACADEMIC",
+  "COMMITTEE_RESEARCH",
+  "COMMITTEE_OTHER",
+]);

@@ -5,8 +5,19 @@ import {
   AuthenticatedRequest,
   requireRoles,
 } from "../middleware/rbac";
+import { AppraisalCategory, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { writeAuditLog } from "../lib/audit";
+import {
+  ALL_CATEGORIES,
+  categoryForKey,
+  categoryForRoles,
+  labelForCategory,
+} from "../lib/appraisalCategories";
+import {
+  allCategoriesApproved,
+  ensureCategoryApprovals,
+} from "../lib/categoryApprovals";
 
 const router: express.Router = express.Router();
 
@@ -27,6 +38,35 @@ const appraisalUpdateSchema = z.object({
 const committeeReviewSchema = z.object({
   notes: z.string().min(1),
 });
+
+const categoryReviewSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        itemId: z.string().min(1),
+        approvedPoints: z.number().int().min(0),
+        remark: z.string().optional(),
+      }),
+    )
+    .min(1),
+  notes: z.string().optional(),
+  // SUPER_ADMIN (which holds no category role) must name the category it acts on.
+  category: z.enum(["ACADEMICS", "RESEARCH", "OTHERS"]).optional(),
+});
+
+function readHodApprovedPoints(notes: string | null, fallback: number): number {
+  if (!notes) return fallback;
+  try {
+    const parsed = JSON.parse(notes) as {
+      hodReview?: { approvedPoints?: number };
+    };
+    return typeof parsed.hodReview?.approvedPoints === "number"
+      ? parsed.hodReview.approvedPoints
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 type AppraisalItemInput = {
   id?: string;
@@ -79,6 +119,11 @@ async function getAppraisalOr404(appraisalId: string) {
           },
         },
       },
+      categoryApprovals: {
+        include: {
+          approvedBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      },
     },
   });
 }
@@ -110,7 +155,7 @@ async function canViewAppraisal(
     }
   }
 
-  if (roles.includes("COMMITTEE")) {
+  if (isAnyCommittee(roles)) {
     if (["COMMITTEE_REVIEW", "HR_FINALIZED"].includes(appraisal.status)) {
       return true;
     }
@@ -121,6 +166,34 @@ async function canViewAppraisal(
   }
 
   return false;
+}
+
+const COMMITTEE_ROLES = [
+  "COMMITTEE",
+  "COMMITTEE_ACADEMIC",
+  "COMMITTEE_RESEARCH",
+  "COMMITTEE_OTHER",
+];
+
+function isAnyCommittee(roles: string[]): boolean {
+  return roles.some((role) => COMMITTEE_ROLES.includes(role));
+}
+
+function facultyIncrement(totalPoints: number) {
+  if (totalPoints < 16) return 5;
+  if (totalPoints < 30) return 8;
+  if (totalPoints < 45) return 10;
+  return 15;
+}
+
+function parseHodAdditionalPoints(hodRemarks: string | null): number {
+  if (!hodRemarks) return 0;
+  try {
+    const parsed = JSON.parse(hodRemarks);
+    return typeof parsed.additionalPoints === "number" ? parsed.additionalPoints : 0;
+  } catch {
+    return 0;
+  }
 }
 
 router.get(
@@ -247,7 +320,14 @@ router.get(
 router.get(
   "/committee/review-list",
   authenticateRequest,
-  requireRoles("COMMITTEE", "HR", "SUPER_ADMIN"),
+  requireRoles(
+    "COMMITTEE",
+    "COMMITTEE_ACADEMIC",
+    "COMMITTEE_RESEARCH",
+    "COMMITTEE_OTHER",
+    "HR",
+    "SUPER_ADMIN",
+  ),
   async (req: AuthenticatedRequest, res, next) => {
     try {
       const userId = req.auth?.sub;
@@ -257,6 +337,9 @@ router.get(
           .status(401)
           .json({ success: false, message: "Authentication required" });
       }
+
+      // The category this caller governs (null for legacy COMMITTEE / HR).
+      const callerCategory = categoryForRoles(req.auth?.roles);
 
       const committeeCycleParam =
         typeof req.query.cycleId === "string" ? req.query.cycleId : null;
@@ -322,25 +405,58 @@ router.get(
           items: {
             select: {
               points: true,
+              category: true,
             },
+          },
+          categoryApprovals: {
+            select: { category: true, approved: true },
           },
         },
         orderBy: { submittedAt: "desc" },
       });
 
-      const payload = appraisals.map((appraisal) => ({
-        id: appraisal.id,
-        status: appraisal.status,
-        submittedAt: appraisal.submittedAt,
-        finalScore: appraisal.finalScore,
-        user: appraisal.user,
-        cycle: appraisal.cycle,
-        totalSelectedPoints: appraisal.items.reduce(
-          (sum, item) => sum + item.points,
-          0,
-        ),
-        itemsCount: appraisal.items.length,
-      }));
+      // Materialise approval rows for any committee-stage appraisal that lacks
+      // them, so the dashboard status board is complete.
+      const missing = appraisals.filter(
+        (a) =>
+          a.status === "COMMITTEE_REVIEW" &&
+          a.categoryApprovals.length < ALL_CATEGORIES.length,
+      );
+      if (missing.length > 0) {
+        await Promise.all(missing.map((a) => ensureCategoryApprovals(a.id)));
+      }
+
+      const payload = appraisals.map((appraisal) => {
+        // Points visible to this caller: only their category when they hold a
+        // category committee role, otherwise the whole appraisal (legacy/HR).
+        const scopedItems = callerCategory
+          ? appraisal.items.filter((item) => item.category === callerCategory)
+          : appraisal.items;
+
+        const approvalByCategory = new Map(
+          appraisal.categoryApprovals.map((a) => [a.category, a.approved]),
+        );
+
+        return {
+          id: appraisal.id,
+          status: appraisal.status,
+          submittedAt: appraisal.submittedAt,
+          finalScore: appraisal.finalScore,
+          user: appraisal.user,
+          cycle: appraisal.cycle,
+          totalSelectedPoints: scopedItems.reduce(
+            (sum, item) => sum + item.points,
+            0,
+          ),
+          itemsCount: scopedItems.length,
+          callerCategory,
+          categoryApprovals: ALL_CATEGORIES.map((category) => ({
+            category,
+            label: labelForCategory(category),
+            approved: approvalByCategory.get(category) ?? false,
+          })),
+        };
+      });
 
       res.json({
         success: true,
@@ -460,6 +576,7 @@ router.put(
           data: parsed.items.map((item) => ({
             appraisalId,
             key: item.key,
+            category: categoryForKey(item.key),
             points: item.points,
             weight: item.weight,
             notes: item.notes || null,
@@ -503,12 +620,23 @@ router.get(
           .json({ success: false, message: "Authentication required" });
       }
 
-      const appraisal = await getAppraisalOr404(appraisalId);
+      let appraisal = await getAppraisalOr404(appraisalId);
 
       if (!appraisal) {
         return res
           .status(404)
           .json({ success: false, message: "Appraisal not found" });
+      }
+
+      // Lazily materialise the three per-category approval rows the first time
+      // an appraisal is opened during committee review, so the UI always has a
+      // complete status board (Academic / Research / Other).
+      if (
+        appraisal.status === "COMMITTEE_REVIEW" &&
+        appraisal.categoryApprovals.length < ALL_CATEGORIES.length
+      ) {
+        await ensureCategoryApprovals(appraisalId);
+        appraisal = (await getAppraisalOr404(appraisalId)) ?? appraisal;
       }
 
       const roles = req.auth?.roles || [];
@@ -636,6 +764,220 @@ router.post(
         success: true,
         message: "Committee review saved successfully",
         data: { ...updated, committeeAssignments: appraisal.committeeAssignments },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// Per-category committee approval (Task 2). Each of the three category
+// committees (Academic / Research / Other) reviews only its own criteria and
+// approves that category. The appraisal auto-combines and advances to HR only
+// once all three categories are approved.
+router.put(
+  "/:appraisalId/category-review",
+  authenticateRequest,
+  requireRoles(
+    "COMMITTEE_ACADEMIC",
+    "COMMITTEE_RESEARCH",
+    "COMMITTEE_OTHER",
+    "SUPER_ADMIN",
+  ),
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const userId = req.auth?.sub;
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Authentication required" });
+      }
+
+      const { appraisalId } = req.params;
+      const parsed = categoryReviewSchema.parse(req.body ?? {});
+
+      const category =
+        categoryForRoles(req.auth?.roles) ??
+        (parsed.category as AppraisalCategory | undefined) ??
+        null;
+      if (!category) {
+        return res.status(400).json({
+          success: false,
+          message: "No committee category resolved for this reviewer",
+        });
+      }
+
+      const appraisal = await prisma.appraisal.findUnique({
+        where: { id: appraisalId },
+        include: { items: true },
+      });
+
+      if (!appraisal) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Appraisal not found" });
+      }
+
+      if (appraisal.status !== "COMMITTEE_REVIEW") {
+        return res.status(400).json({
+          success: false,
+          message: "Appraisal is not pending committee review",
+        });
+      }
+
+      await ensureCategoryApprovals(appraisalId);
+
+      // Only this category's items are reviewable here, and all of them must be
+      // reviewed to approve the category.
+      const categoryItems = appraisal.items.filter(
+        (item) => item.category === category,
+      );
+      const categoryItemIds = new Set(categoryItems.map((item) => item.id));
+      const submittedIds = new Set(parsed.items.map((item) => item.itemId));
+
+      for (const submitted of parsed.items) {
+        if (!categoryItemIds.has(submitted.itemId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Item does not belong to this reviewer's category",
+          });
+        }
+      }
+      if (
+        categoryItems.length > 0 &&
+        submittedIds.size !== categoryItemIds.size
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please review all criteria in your category before approving",
+        });
+      }
+
+      const byId = new Map(appraisal.items.map((item) => [item.id, item]));
+      for (const reviewed of parsed.items) {
+        const existing = byId.get(reviewed.itemId)!;
+        const upper = readHodApprovedPoints(existing.notes, existing.points);
+        if (reviewed.approvedPoints > upper) {
+          return res.status(400).json({
+            success: false,
+            message: "Approved points cannot exceed HOD approved points",
+          });
+        }
+        if (reviewed.approvedPoints < upper && !reviewed.remark?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "Remark is required for each deducted criterion",
+          });
+        }
+      }
+
+      // Persist per-item committee decision (points + committeeReview note).
+      const reviewedAt = new Date().toISOString();
+      const updateRows = parsed.items
+        .map((reviewed) => {
+          const existing = byId.get(reviewed.itemId);
+          if (!existing) return null;
+          const baseNotes = (() => {
+            if (!existing.notes) return {} as Record<string, unknown>;
+            try {
+              return JSON.parse(existing.notes) as Record<string, unknown>;
+            } catch {
+              return {} as Record<string, unknown>;
+            }
+          })();
+          const nextNotes = {
+            ...baseNotes,
+            committeeReview: {
+              approvedPoints: reviewed.approvedPoints,
+              remark: reviewed.remark?.trim() || null,
+              reviewedBy: userId,
+              reviewedAt,
+            },
+          };
+          return Prisma.sql`(${reviewed.itemId}::text, ${reviewed.approvedPoints}::int, ${JSON.stringify(nextNotes)}::text)`;
+        })
+        .filter((row): row is Prisma.Sql => row !== null);
+
+      if (updateRows.length > 0) {
+        await prisma.$executeRaw`
+          UPDATE "AppraisalItem" AS ai
+          SET points = v.points, notes = v.notes
+          FROM (VALUES ${Prisma.join(updateRows)}) AS v(id, points, notes)
+          WHERE ai.id = v.id
+        `;
+      }
+
+      const categoryTotal = parsed.items.reduce(
+        (sum, item) => sum + item.approvedPoints,
+        0,
+      );
+
+      await prisma.categoryApproval.update({
+        where: { appraisalId_category: { appraisalId, category } },
+        data: {
+          approved: true,
+          approvedById: userId,
+          approvedAt: new Date(),
+          notes: parsed.notes?.trim() || null,
+          totalPoints: categoryTotal,
+        },
+      });
+
+      // Gate: advance to HR only once all three categories are approved.
+      const approvals = await prisma.categoryApproval.findMany({
+        where: { appraisalId },
+        select: { category: true, approved: true },
+      });
+      const combined = allCategoriesApproved(approvals);
+
+      let forwardedStatus = appraisal.status as string;
+      if (combined) {
+        const freshItems = await prisma.appraisalItem.findMany({
+          where: { appraisalId },
+          select: { points: true },
+        });
+        const itemTotal = freshItems.reduce((sum, i) => sum + i.points, 0);
+        const totalApproved =
+          itemTotal + parseHodAdditionalPoints(appraisal.hodRemarks);
+        await prisma.appraisal.update({
+          where: { id: appraisalId },
+          data: {
+            status: "HR_FINALIZED",
+            locked: true,
+            finalScore: totalApproved,
+            finalPercent: facultyIncrement(totalApproved),
+          },
+        });
+        forwardedStatus = "HR_FINALIZED";
+      }
+
+      await writeAuditLog({
+        actorId: userId,
+        action: combined
+          ? "appraisal.committee.category.approved.combined"
+          : "appraisal.committee.category.approved",
+        resource: "Appraisal",
+        resourceId: appraisalId,
+        meta: { category, categoryTotal, combined },
+      });
+
+      res.json({
+        success: true,
+        message: combined
+          ? "Category approved. All categories complete — forwarded to HR."
+          : `${labelForCategory(category)} category approved.`,
+        data: {
+          appraisalId,
+          category,
+          categoryTotal,
+          combined,
+          status: forwardedStatus,
+          categoryApprovals: ALL_CATEGORIES.map((c) => ({
+            category: c,
+            label: labelForCategory(c),
+            approved: approvals.some((a) => a.category === c && a.approved),
+          })),
+        },
       });
     } catch (error) {
       next(error);

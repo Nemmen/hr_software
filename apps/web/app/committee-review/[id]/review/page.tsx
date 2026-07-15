@@ -54,6 +54,14 @@ type CommitteeAppraisalDetail = {
   finalScore?: number | null;
   committeeNotes?: string | null;
   hodRemarks?: string | null;
+  categoryApprovals?: CategoryApprovalRow[];
+};
+
+type CategoryApprovalRow = {
+  category: string;
+  approved: boolean;
+  approvedBy?: { firstName: string; lastName: string } | null;
+  approvedAt?: string | null;
 };
 
 type CommitteeAppraisalDetailResponse = Omit<
@@ -67,6 +75,7 @@ type CommitteeAppraisalDetailResponse = Omit<
     notes?: string | null;
   }>;
   hodRemarks?: string | null;
+  categoryApprovals?: CategoryApprovalRow[];
 };
 
 type ItemState = {
@@ -104,6 +113,28 @@ const CATEGORY_DETAILS: Record<
   },
 };
 
+// Maps a category committee role to the single category it governs.
+const ROLE_TO_CATEGORY: Record<string, ReviewCategory> = {
+  COMMITTEE_ACADEMIC: "Academics",
+  COMMITTEE_RESEARCH: "Research",
+  COMMITTEE_OTHER: "Others",
+};
+
+const CATEGORY_TO_ENUM: Record<
+  ReviewCategory,
+  "ACADEMICS" | "RESEARCH" | "OTHERS"
+> = {
+  Academics: "ACADEMICS",
+  Research: "RESEARCH",
+  Others: "OTHERS",
+};
+
+const ENUM_TO_CATEGORY: Record<string, ReviewCategory> = {
+  ACADEMICS: "Academics",
+  RESEARCH: "Research",
+  OTHERS: "Others",
+};
+
 const CATEGORY_BY_KEY: Record<string, ReviewCategory> = {
   academics_average_result: "Academics",
   fdp_stp: "Academics",
@@ -122,6 +153,11 @@ const CATEGORY_BY_KEY: Record<string, ReviewCategory> = {
   awards_recognition: "Others",
   fee_recovery: "Others",
   awards_outside_svgoi: "Others",
+  // Legacy criterion-key aliases (must match apps/api lib/appraisalCategories.ts).
+  scopus_papers: "Research",
+  book_chapter_book_patent: "Research",
+  conference_seminar_symposia: "Research",
+  hod_remarks_score: "Others",
 };
 
 const CRITERION_ORDER = [
@@ -238,6 +274,15 @@ function CommitteeReviewPage() {
   const { session } = useAuthStore();
   const role = getPrimaryRole(session?.user.roles ?? []);
   const { toast } = useToast();
+
+  // The single category this reviewer governs (null for legacy COMMITTEE / HR /
+  // super-admin who see and finalize every category at once).
+  const callerCategory = useMemo<ReviewCategory | null>(() => {
+    for (const r of session?.user.roles ?? []) {
+      if (ROLE_TO_CATEGORY[r]) return ROLE_TO_CATEGORY[r];
+    }
+    return null;
+  }, [session]);
 
   const [appraisal, setAppraisal] = useState<CommitteeAppraisalDetail | null>(
     null,
@@ -366,6 +411,7 @@ function CommitteeReviewPage() {
           finalScore: payload.finalScore,
           committeeNotes: payload.committeeNotes,
           hodRemarks: payload.hodRemarks,
+          categoryApprovals: payload.categoryApprovals ?? [],
         });
 
         setSavedSections({});
@@ -448,8 +494,41 @@ function CommitteeReviewPage() {
     return CATEGORY_ORDER.map((category) => ({
       category,
       items: grouped[category],
-    })).filter((section) => section.items.length > 0);
-  }, [appraisal]);
+    }))
+      .filter((section) => section.items.length > 0)
+      // Category committees only ever see/act on their own category.
+      .filter(
+        (section) => !callerCategory || section.category === callerCategory,
+      );
+  }, [appraisal, callerCategory]);
+
+  // Items in scope for this reviewer (their category only, or all for legacy).
+  const scopedItems = useMemo(() => {
+    const items = appraisal?.items ?? [];
+    return callerCategory
+      ? items.filter((item) => getReviewCategory(item) === callerCategory)
+      : items;
+  }, [appraisal, callerCategory]);
+
+  const scopedApprovedPoints = useMemo(
+    () =>
+      scopedItems.reduce(
+        (sum, item) =>
+          sum +
+          Number(itemState[item.id]?.approvedPoints ?? item.hodApprovedPoints),
+        0,
+      ),
+    [scopedItems, itemState],
+  );
+
+  const myCategoryApproved = useMemo(
+    () =>
+      !!callerCategory &&
+      (appraisal?.categoryApprovals ?? []).some(
+        (a) => ENUM_TO_CATEGORY[a.category] === callerCategory && a.approved,
+      ),
+    [appraisal, callerCategory],
+  );
 
   const activeSection =
     reviewSections.find((section) => section.category === activeCategory) ??
@@ -604,6 +683,59 @@ function CommitteeReviewPage() {
     }
   }
 
+  // Category committee approves only its own category. Backend auto-forwards to
+  // HR once all three categories are approved.
+  async function approveCategory() {
+    if (!appraisal || !callerCategory) {
+      return;
+    }
+
+    const section = reviewSections.find(
+      (entry) => entry.category === callerCategory,
+    );
+    if (!section) {
+      return;
+    }
+
+    if (validateItemRemarks(section.items)) {
+      toast({
+        title: "Error",
+        description: "Remarks are required for each deducted criterion.",
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const result = await api.committee.approveCategory(appraisalId, {
+        items: section.items.map((item) => buildItemPayload(item, itemState)),
+        category: CATEGORY_TO_ENUM[callerCategory],
+      });
+      toast({
+        title: "Success",
+        description: result.data.combined
+          ? "All categories approved — appraisal forwarded to HR."
+          : `${callerCategory} category approved.`,
+        variant: "success",
+      });
+      setTimeout(() => {
+        router.push("/committee-review");
+      }, 1000);
+    } catch (submitError: any) {
+      toast({
+        title: "Error",
+        description:
+          submitError?.response?.data?.message ||
+          submitError?.message ||
+          "Failed to approve category",
+        variant: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <AppShell role={role}>
@@ -665,10 +797,10 @@ function CommitteeReviewPage() {
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
-            Faculty Claimed
+            {callerCategory ? `${callerCategory} Claimed` : "Faculty Claimed"}
           </p>
           <p className="mt-2 text-2xl font-bold text-text">
-            {appraisal.items.reduce((sum, item) => sum + item.facultyPoints, 0)}
+            {scopedItems.reduce((sum, item) => sum + item.facultyPoints, 0)}
           </p>
         </div>
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
@@ -676,10 +808,10 @@ function CommitteeReviewPage() {
             HOD Approved
           </p>
           <p className="mt-2 text-2xl font-bold text-text">
-            {appraisal.items.reduce((sum, item) => sum + item.hodApprovedPoints, 0) +
-              (!isHodAppraisal ? hodAdditionalPoints : 0)}
+            {scopedItems.reduce((sum, item) => sum + item.hodApprovedPoints, 0) +
+              (!callerCategory && !isHodAppraisal ? hodAdditionalPoints : 0)}
           </p>
-          {!isHodAppraisal && hodAdditionalPoints > 0 && (
+          {!callerCategory && !isHodAppraisal && hodAdditionalPoints > 0 && (
             <p className="mt-0.5 text-xs text-text-3">
               incl. {hodAdditionalPoints} remarks score
             </p>
@@ -687,10 +819,14 @@ function CommitteeReviewPage() {
         </div>
         <div className="rounded-2xl border border-border bg-brand/10 p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-brand">
-            Committee Approved
+            {callerCategory ? `${callerCategory} Approved` : "Committee Approved"}
           </p>
           <p className="mt-2 text-2xl font-bold text-brand">
-            {canEdit ? totalApprovedPoints : totalCommitteeApproved}
+            {callerCategory
+              ? scopedApprovedPoints
+              : canEdit
+              ? totalApprovedPoints
+              : totalCommitteeApproved}
           </p>
         </div>
       </div>
@@ -754,7 +890,7 @@ function CommitteeReviewPage() {
                 {CATEGORY_DETAILS[activeSection.category].description}
               </p>
             </div>
-            {canEdit && (
+            {canEdit && !callerCategory && (
               <button
                 type="button"
                 onClick={() => void saveSection(activeSection.category)}
@@ -966,28 +1102,91 @@ function CommitteeReviewPage() {
         </div>
       )}
 
+      {/* Per-category approval status board */}
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+          Category Approval Status
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {CATEGORY_ORDER.map((category) => {
+            const row = (appraisal.categoryApprovals ?? []).find(
+              (a) => ENUM_TO_CATEGORY[a.category] === category,
+            );
+            const approved = !!row?.approved;
+            return (
+              <div
+                key={category}
+                className={`rounded-xl border p-3 ${
+                  approved
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "border-border bg-bg"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {approved ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <span className="h-4 w-4 rounded-full border-2 border-border" />
+                  )}
+                  <span className="text-sm font-semibold text-text">
+                    {category}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-text-3">
+                  {approved
+                    ? row?.approvedBy
+                      ? `Approved by ${row.approvedBy.firstName} ${row.approvedBy.lastName}`
+                      : "Approved"
+                    : "Pending"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Footer */}
       {canEdit ? (
         <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-         
           <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${isHodAppraisal ? "mt-5" : ""}`}>
             <p className="text-sm text-text-2">
-              Total approved points{isHodAppraisal ? " (including HOD’s Remarks)" : ""}:{" "}
-              {totalApprovedPoints}
+              {callerCategory
+                ? `${callerCategory} approved points: ${scopedApprovedPoints}`
+                : `Total approved points${isHodAppraisal ? " (including HOD’s Remarks)" : ""}: ${totalApprovedPoints}`}
             </p>
-            <button
-              type="button"
-              onClick={() => void submitReview()}
-              disabled={saving || savingCategory !== null}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {saving ? "Submitting..." : "Submit Final Review"}
-            </button>
+            {callerCategory ? (
+              <button
+                type="button"
+                onClick={() => void approveCategory()}
+                disabled={saving || myCategoryApproved}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {myCategoryApproved
+                  ? `${callerCategory} Approved`
+                  : saving
+                  ? "Approving..."
+                  : `Approve ${callerCategory}`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void submitReview()}
+                disabled={saving || savingCategory !== null}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-medium text-text-inv shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Submitting..." : "Submit Final Review"}
+              </button>
+            )}
           </div>
         </section>
       ) : (
@@ -1022,4 +1221,9 @@ function CommitteeReviewPage() {
   );
 }
 
-export default withAuth(CommitteeReviewPage, ["COMMITTEE"]);
+export default withAuth(CommitteeReviewPage, [
+  "COMMITTEE",
+  "COMMITTEE_ACADEMIC",
+  "COMMITTEE_RESEARCH",
+  "COMMITTEE_OTHER",
+]);

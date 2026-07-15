@@ -7,6 +7,7 @@ import {
   requireRoles,
 } from "../middleware/rbac";
 import { prisma } from "../lib/prisma";
+import { categoryFromLabel } from "../lib/appraisalCategories";
 import {
   ensureFacultyUploadDir,
   encryptFacultyIdentity,
@@ -1036,10 +1037,80 @@ router.get(
         }
       }
 
-      // Parse item notes to extract selection and evidence
-      const items = appraisal.items.map((item) => {
-        const parsed = parseItemNotes(item.notes);
+      // ── Audit trail (Task 1) ────────────────────────────────────────────
+      // Each review stage records { approvedPoints, remark, reviewedBy,
+      // reviewedAt } inside AppraisalItem.notes. Resolve every reviewer id to a
+      // display name in a single batched query (no N+1) so the faculty view can
+      // show "which question, changed by whom, to what, and why".
+      const parsedByItem = appraisal.items.map((item) => ({
+        item,
+        parsed: parseItemNotes(item.notes),
+      }));
 
+      const REVIEW_STAGE_KEYS = [
+        "hodReview",
+        "committeeReview",
+        "hrReview",
+        "adminReview",
+      ] as const;
+
+      const reviewerIds = new Set<string>();
+      for (const { parsed } of parsedByItem) {
+        for (const key of REVIEW_STAGE_KEYS) {
+          const stage = parsed[key];
+          if (
+            stage &&
+            typeof stage === "object" &&
+            typeof (stage as Record<string, unknown>).reviewedBy === "string"
+          ) {
+            reviewerIds.add(
+              (stage as Record<string, unknown>).reviewedBy as string,
+            );
+          }
+        }
+      }
+
+      const reviewers = reviewerIds.size
+        ? await prisma.user.findMany({
+            where: { id: { in: [...reviewerIds] } },
+            select: { id: true, firstName: true, lastName: true },
+          })
+        : [];
+      const reviewerNameById = new Map(
+        reviewers.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
+      );
+
+      const STAGE_LABELS: Record<(typeof REVIEW_STAGE_KEYS)[number], string> = {
+        hodReview: "HOD Review",
+        committeeReview: "Committee Review",
+        hrReview: "HR Review",
+        adminReview: "Management Review",
+      };
+
+      function buildStageEntry(
+        raw: unknown,
+        stage: (typeof REVIEW_STAGE_KEYS)[number],
+      ) {
+        if (!raw || typeof raw !== "object") return null;
+        const r = raw as Record<string, unknown>;
+        const byId = typeof r.reviewedBy === "string" ? r.reviewedBy : null;
+        return {
+          stage,
+          stageLabel: STAGE_LABELS[stage],
+          approvedPoints:
+            typeof r.approvedPoints === "number" ? r.approvedPoints : null,
+          remark: typeof r.remark === "string" ? r.remark : null,
+          byId,
+          by: byId ? reviewerNameById.get(byId) ?? "Unknown" : null,
+          at: typeof r.reviewedAt === "string" ? r.reviewedAt : null,
+        };
+      }
+
+      const facultyName = `${appraisal.user.firstName} ${appraisal.user.lastName}`.trim();
+      const submittedAtIso = appraisal.submittedAt?.toISOString() ?? null;
+
+      // Parse item notes to extract selection, evidence, and full review trail
+      const items = parsedByItem.map(({ item, parsed }) => {
         const hodReview =
           typeof parsed.hodReview === "object" && parsed.hodReview
             ? (parsed.hodReview as Record<string, unknown>)
@@ -1048,6 +1119,31 @@ router.get(
           typeof parsed.committeeReview === "object" && parsed.committeeReview
             ? (parsed.committeeReview as Record<string, unknown>)
             : null;
+
+        // The faculty's original selection is preserved in hodReview.originalPoints;
+        // item.points is overwritten by each subsequent approval stage.
+        const facultyOriginalPoints =
+          typeof hodReview?.originalPoints === "number"
+            ? Number(hodReview.originalPoints)
+            : item.points;
+
+        const reviewTrail = [
+          {
+            stage: "faculty" as const,
+            stageLabel: "Faculty (submitted)",
+            approvedPoints: facultyOriginalPoints,
+            remark:
+              typeof parsed.facultyRemarks === "string"
+                ? parsed.facultyRemarks
+                : null,
+            byId: appraisal.user.id,
+            by: facultyName,
+            at: submittedAtIso,
+          },
+          ...REVIEW_STAGE_KEYS.map((key) =>
+            buildStageEntry(parsed[key], key),
+          ).filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+        ];
 
         return {
           id: item.id,
@@ -1066,7 +1162,7 @@ router.get(
             typeof parsed.facultyRemarks === "string"
               ? parsed.facultyRemarks
               : null,
-          facultyPoints: item.points,
+          facultyPoints: facultyOriginalPoints,
           hodApprovedPoints:
             typeof hodReview?.approvedPoints === "number"
               ? hodReview.approvedPoints
@@ -1081,6 +1177,8 @@ router.get(
             typeof committeeReview?.remark === "string"
               ? committeeReview.remark
               : "",
+          finalPoints: item.points,
+          reviewTrail,
           evidence:
             typeof parsed.evidence === "object" &&
             Array.isArray(parsed.evidence)
@@ -1104,6 +1202,9 @@ router.get(
         data: {
           id: appraisal.id,
           status: appraisal.status,
+          // Faculty see the full audit trail only once the appraisal is fully
+          // approved; before that the reviewer deliberations stay internal.
+          finalized: appraisal.status === "FULLY_APPROVED",
           submittedAt: appraisal.submittedAt?.toISOString() ?? null,
           user: appraisal.user,
           cycle: appraisal.cycle,
@@ -1305,6 +1406,7 @@ router.post(
 
         return {
           key: criterion.key,
+          category: categoryFromLabel(criterion.category),
           points: option?.points ?? 0,
           weight: 1,
           notes: JSON.stringify({
@@ -1350,6 +1452,7 @@ router.post(
           data: appraisalItems.map((item) => ({
             appraisalId,
             key: item.key,
+            category: item.category,
             points: item.points,
             weight: item.weight,
             notes: item.notes,

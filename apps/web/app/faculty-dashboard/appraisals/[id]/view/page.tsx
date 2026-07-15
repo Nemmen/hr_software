@@ -69,6 +69,15 @@ function resolveEvidenceUrl(url: string) {
   return toDriveViewerUrl(url);
 }
 
+function formatDateTime(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 function ViewSubmittedAppraisalPage() {
   const params = useParams();
   const { session } = useAuthStore();
@@ -282,7 +291,70 @@ function ViewSubmittedAppraisalPage() {
                     </div>
                   ) : null}
                 </div>
+
+                {appraisal.finalized && typeof item.finalPoints === "number" ? (
+                  <div className="shrink-0 rounded-xl border border-border bg-surface-2 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                      Final Points
+                    </p>
+                    <p className="mt-1 text-2xl font-semibold text-text">
+                      {item.finalPoints}
+                    </p>
+                    {item.finalPoints !== item.facultyPoints ? (
+                      <p className="text-xs text-text-3">
+                        was {item.facultyPoints}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
+
+              {appraisal.finalized &&
+              item.reviewTrail &&
+              item.reviewTrail.length > 0 ? (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-3">
+                    Update history
+                  </p>
+                  <ol className="space-y-3">
+                    {item.reviewTrail.map((entry, index) => (
+                      <li
+                        key={`${item.id}-trail-${index}`}
+                        className="flex gap-3"
+                      >
+                        <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-brand" />
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-sm font-semibold text-text">
+                              {entry.stageLabel}
+                            </span>
+                            {entry.by ? (
+                              <span className="text-xs text-text-2">
+                                by {entry.by}
+                              </span>
+                            ) : null}
+                            {entry.approvedPoints != null ? (
+                              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2">
+                                {entry.approvedPoints} pts
+                              </span>
+                            ) : null}
+                            {entry.at ? (
+                              <span className="text-xs text-text-3">
+                                {formatDateTime(entry.at)}
+                              </span>
+                            ) : null}
+                          </div>
+                          {entry.remark ? (
+                            <p className="mt-1 text-sm text-text-2">
+                              &ldquo;{entry.remark}&rdquo;
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
             </section>
           ))}
         </div>
