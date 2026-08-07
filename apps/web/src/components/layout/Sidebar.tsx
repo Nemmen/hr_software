@@ -78,9 +78,13 @@ const ROLE_NAV: Record<string, { title: string; items: NavItem[] }> = {
     ],
   },
   COMMITTEE_OTHER: {
-    title: "Other Committee",
+    title: "Co-curricular Committee",
     items: [
-      { label: "Other Reviews", href: "/committee-review", icon: Shield },
+      {
+        label: "Co-curricular Reviews",
+        href: "/committee-review",
+        icon: Shield,
+      },
     ],
   },
   HR: {

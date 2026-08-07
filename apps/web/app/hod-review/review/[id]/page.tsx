@@ -19,6 +19,7 @@ import { ConfirmDialog } from "@/components/ui";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
+import { memoPenaltyFor } from "@/lib/utils/memoPolicy";
 import { useAuthStore } from "@/store/auth";
 
 type ReviewItem = {
@@ -88,6 +89,7 @@ type RequestDetail = {
   additionalPoints: number;
   additionalPointsRemark: string;
   overallRemark: string;
+  memoIssues: number;
 };
 
 type ItemState = {
@@ -111,6 +113,7 @@ function HodReviewDetailPage() {
   const [additionalPoints, setAdditionalPoints] = useState(0);
   const [additionalPointsRemark, setAdditionalPointsRemark] = useState("");
   const [overallRemark, setOverallRemark] = useState("");
+  const [memoIssues, setMemoIssues] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -133,6 +136,7 @@ function HodReviewDetailPage() {
         setAdditionalPoints(payload.additionalPoints || 0);
         setAdditionalPointsRemark(payload.additionalPointsRemark || "");
         setOverallRemark(payload.overallRemark || "");
+        setMemoIssues(payload.memoIssues || 0);
 
         const nextState: Record<string, ItemState> = {};
         payload.items.forEach((item) => {
@@ -173,13 +177,21 @@ function HodReviewDetailPage() {
   const canEdit =
     detail?.status === "SUBMITTED" || detail?.status === "HOD_REVIEW";
 
-  const totalApprovedPoints = useMemo(() => {
+  // Gross = criteria points + criterion XIII (HOD's remarks score).
+  const grossApprovedPoints = useMemo(() => {
     const itemTotal = Object.values(itemState).reduce(
       (sum, item) => sum + Number(item.approvedPoints || 0),
       0,
     );
     return itemTotal + additionalPoints;
   }, [additionalPoints, itemState]);
+
+  const memoPenalty = useMemo(() => memoPenaltyFor(memoIssues), [memoIssues]);
+
+  const totalApprovedPoints = Math.max(
+    grossApprovedPoints - memoPenalty.deductionPoints,
+    0,
+  );
 
   function updateItem(id: string, patch: Partial<ItemState>) {
     setItemState((current) => ({
@@ -248,6 +260,7 @@ function HodReviewDetailPage() {
         additionalPoints,
         additionalPointsRemark: additionalPointsRemark.trim() || undefined,
         overallRemark: overallRemark.trim() || undefined,
+        memoIssues,
       });
       toast({
         title: "Success",
@@ -539,6 +552,84 @@ function HodReviewDetailPage() {
             </div>
           )}
         </section>
+
+        {/* Memo issues — reviewed by the Co-curricular committee, recorded here
+            because the HOD holds the disciplinary record. Deducts from the
+            appraisal total rather than from any single criterion. */}
+        <section className="rounded-2xl border border-danger/20 bg-surface p-5 shadow-sm">
+          <h3 className="font-display text-lg font-semibold text-text">
+            Memo Issues
+          </h3>
+          <p className="mt-1 text-sm text-text-2">
+            Number of memos issued to this faculty during the cycle. Reviewed by
+            the Co-curricular committee.
+          </p>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div>
+              <label
+                htmlFor="memo-issues"
+                className="mb-1.5 block text-sm font-medium text-text"
+              >
+                Memos Issued
+              </label>
+              {canEdit ? (
+                <input
+                  id="memo-issues"
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={memoIssues}
+                  title="Number of memos issued during the cycle"
+                  onChange={(event) =>
+                    setMemoIssues(
+                      Math.max(
+                        0,
+                        Math.min(50, Number(event.target.value || 0)),
+                      ),
+                    )
+                  }
+                  className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text"
+                />
+              ) : (
+                <p className="mt-1 text-sm font-medium text-text">
+                  {memoIssues}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg bg-bg p-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                Penalty Applied
+              </p>
+              {memoPenalty.note ? (
+                <>
+                  <p
+                    className={`mt-1 text-sm font-semibold ${
+                      memoPenalty.noIncrement ? "text-danger" : "text-text"
+                    }`}
+                  >
+                    {memoPenalty.noIncrement
+                      ? "No increment for the year"
+                      : `−${memoPenalty.deductionPoints} points`}
+                  </p>
+                  <p className="mt-0.5 text-xs text-text-2">
+                    {memoPenalty.note}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-text-2">No penalty</p>
+              )}
+            </div>
+          </div>
+
+          <ul className="mt-4 grid gap-1 text-xs text-text-3 sm:grid-cols-2">
+            <li>2 memos — 4 points deducted</li>
+            <li>3–4 memos — 6 points deducted</li>
+            <li>5 memos — 8 points deducted + 3 holidays</li>
+            <li>More than 5 memos — no increment for the year</li>
+          </ul>
+        </section>
       </div>
 
       <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -556,10 +647,31 @@ function HodReviewDetailPage() {
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-text-2">
-                Total approved points (including HOD&apos;s remarks):{" "}
-                <span className="font-semibold text-text">{totalApprovedPoints}</span>
-              </p>
+              <div className="text-sm text-text-2">
+                <p>
+                  Total approved points (including HOD&apos;s remarks):{" "}
+                  <span className="font-semibold text-text">
+                    {totalApprovedPoints}
+                  </span>
+                  {memoPenalty.deductionPoints > 0 && (
+                    <span className="ml-1 text-xs text-danger">
+                      ({grossApprovedPoints} − {memoPenalty.deductionPoints}{" "}
+                      memo penalty)
+                    </span>
+                  )}
+                </p>
+                {memoPenalty.noIncrement && (
+                  <p className="mt-0.5 text-xs font-semibold text-danger">
+                    {memoPenalty.memoIssues} memo issues — no increment will be
+                    granted for this year.
+                  </p>
+                )}
+                {memoPenalty.holidaysForfeited > 0 && (
+                  <p className="mt-0.5 text-xs text-danger">
+                    {memoPenalty.holidaysForfeited} holidays forfeited.
+                  </p>
+                )}
+              </div>
               <div className="flex gap-3">
                 <button
                   type="button"

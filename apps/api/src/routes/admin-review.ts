@@ -8,6 +8,7 @@ import {
 } from "../middleware/rbac";
 import { prisma } from "../lib/prisma";
 import { writeAuditLog } from "../lib/audit";
+import { applyMemoPenalty, parseMemoIssues } from "../lib/memoPolicy";
 
 const router: express.Router = express.Router();
 
@@ -289,8 +290,17 @@ router.put(
 
       const itemApproved = parsed.items.reduce((sum, i) => sum + i.approvedPoints, 0);
       const hodAdditionalPoints = parseHodAdditionalPoints(appraisal.hodRemarks);
-      const totalApproved = itemApproved + hodAdditionalPoints;
-      const incrementPercent = facultyIncrement(totalApproved);
+      // + criterion XIII (HOD Remarks), then the HOD-recorded memo penalty.
+      const grossApproved = itemApproved + hodAdditionalPoints;
+      const {
+        penalty: memoPenalty,
+        netPoints: totalApproved,
+        incrementPercent,
+      } = applyMemoPenalty(
+        grossApproved,
+        parseMemoIssues(appraisal.hodRemarks),
+        facultyIncrement,
+      );
 
       // Single batched statement instead of one UPDATE per item.
       const adminReviewedAt = new Date().toISOString();
@@ -342,14 +352,34 @@ router.put(
           action: "appraisal.admin.review.completed",
           resource: "Appraisal",
           resourceId: appraisalId,
-          meta: { itemApproved, hodAdditionalPoints, totalApproved, incrementPercent },
+          meta: {
+            itemApproved,
+            hodAdditionalPoints,
+            grossApproved,
+            memoIssues: memoPenalty.memoIssues,
+            memoDeductionPoints: memoPenalty.deductionPoints,
+            memoNoIncrement: memoPenalty.noIncrement,
+            totalApproved,
+            incrementPercent,
+          },
         }),
       ]);
 
       res.json({
         success: true,
         message: "Appraisal approved successfully",
-        data: { appraisalId, totalApprovedPoints: totalApproved, incrementPercent, forwardedStatus: "FULLY_APPROVED" },
+        data: {
+          appraisalId,
+          grossApprovedPoints: grossApproved,
+          totalApprovedPoints: totalApproved,
+          incrementPercent,
+          memoIssues: memoPenalty.memoIssues,
+          memoDeductionPoints: memoPenalty.deductionPoints,
+          memoHolidaysForfeited: memoPenalty.holidaysForfeited,
+          memoNoIncrement: memoPenalty.noIncrement,
+          memoNote: memoPenalty.note,
+          forwardedStatus: "FULLY_APPROVED",
+        },
       });
     } catch (error) {
       next(error);

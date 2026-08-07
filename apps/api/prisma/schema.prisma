@@ -304,7 +304,7 @@ model CommitteeAssignment {
 }
 
 // Per-category committee sign-off. Each appraisal in committee review has one
-// row per category (Academics / Research / Others). The appraisal only advances
+// row per category (Academics / Research / Co-curricular, enum OTHERS). The appraisal only advances
 // to HR once all three are approved.
 model CategoryApproval {
   id           String            @id @default(uuid())

@@ -32,7 +32,7 @@ type PolicyCriterion = {
   key: string;
   heading: string;
   options: PolicyOption[];
-  category?: "Academics" | "Research" | "Others";
+  category?: "Academics" | "Research" | "Co-curricular";
 };
 
 type AppraisalPolicy = {
@@ -145,7 +145,7 @@ const baseCriteria: PolicyCriterion[] = [
   {
     key: "conference_seminar_workshop",
     heading: "VI. Conference / Seminar / Symposia / Workshop",
-    category: "Research",
+    category: "Academics",
     options: [
       { value: "any_one_attended", label: "Any one attended", points: 1 },
       {
@@ -226,7 +226,7 @@ const baseCriteria: PolicyCriterion[] = [
   {
     key: "co_curricular_activities",
     heading: "X. Co-Curricular Activities",
-    category: "Others",
+    category: "Co-curricular",
     options: [
       {
         value: "participate_institutional",
@@ -253,7 +253,7 @@ const baseCriteria: PolicyCriterion[] = [
   {
     key: "attendance",
     heading: "XI. Attendance",
-    category: "Others",
+    category: "Academics",
     options: [
       { value: "more_than_80", label: "More than 80%", points: 1 },
       { value: "more_than_90", label: "More than 90%", points: 2 },
@@ -264,7 +264,7 @@ const baseCriteria: PolicyCriterion[] = [
   {
     key: "awards_recognition",
     heading: "XII. Awards / Recognition / Employee of the Month",
-    category: "Others",
+    category: "Co-curricular",
     options: [
       {
         value: "university_or_community",
@@ -291,7 +291,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   {
     key: "fee_recovery",
     heading: "XIV. Fee Recovery",
-    category: "Others",
+    category: "Co-curricular",
     options: [
       {
         value: "fifty_percent_next_sem",
@@ -307,7 +307,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
     key: "awards_outside_svgoi",
     heading:
       "XV. Awards Earned by Department Students in Events Organized Outside SVGOI (1st, 2nd & 3rd Position)",
-    category: "Others",
+    category: "Co-curricular",
     options: [
       { value: "upto_2_awards", label: "Upto 2 awards", points: 1 },
       { value: "winning_cash_prize", label: "Winning Cash Prize", points: 2 },
@@ -333,7 +333,7 @@ const hodOnlyCriteria: PolicyCriterion[] = [
   {
     key: "placement",
     heading: "XVII. Placement",
-    category: "Academics",
+    category: "Co-curricular",
     options: [
       {
         value: "thirty_percent",

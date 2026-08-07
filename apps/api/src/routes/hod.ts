@@ -11,6 +11,7 @@ import {
   calculateHodScore,
   persistHodScore,
 } from "../services/hodScoringService";
+import { applyMemoPenalty } from "../lib/memoPolicy";
 import { writeAuditLog } from "../lib/audit";
 
 const router: express.Router = express.Router();
@@ -28,6 +29,9 @@ const hodReviewSchema = z.object({
   additionalPoints: z.number().int().min(0).max(4).default(0),
   additionalPointsRemark: z.string().optional(),
   overallRemark: z.string().optional(),
+  // Memo issues raised against the faculty during the cycle. Governed by the
+  // Co-curricular committee but recorded here, since the HOD holds the record.
+  memoIssues: z.number().int().min(0).max(50).default(0),
 });
 
 function parseItemNotes(notes: string | null) {
@@ -450,6 +454,10 @@ router.get(
             typeof hodRemarks.overallRemark === "string"
               ? hodRemarks.overallRemark
               : "",
+          memoIssues:
+            typeof hodRemarks.memoIssues === "number"
+              ? hodRemarks.memoIssues
+              : 0,
         },
       });
     } catch (error) {
@@ -593,10 +601,16 @@ router.put(
         }
       }
 
-      const totalApproved =
+      // additionalPoints is criterion XIII (HOD Remarks), which belongs to the
+      // Co-curricular category — see HOD_REMARKS_CATEGORY in lib/appraisalCategories.
+      const grossApproved =
         parsed.items.reduce((sum, item) => sum + item.approvedPoints, 0) +
         parsed.additionalPoints;
-      const incrementPercent = facultyIncrement(totalApproved);
+      const {
+        penalty: memoPenalty,
+        netPoints: totalApproved,
+        incrementPercent,
+      } = applyMemoPenalty(grossApproved, parsed.memoIssues, facultyIncrement);
 
       const committees = await prisma.committee.findMany({
         select: { id: true },
@@ -644,6 +658,12 @@ router.put(
         overallRemark: parsed.overallRemark?.trim() || null,
         additionalPoints: parsed.additionalPoints,
         additionalPointsRemark: parsed.additionalPointsRemark?.trim() || null,
+        memoIssues: parsed.memoIssues,
+        memoDeductionPoints: memoPenalty.deductionPoints,
+        memoHolidaysForfeited: memoPenalty.holidaysForfeited,
+        memoNoIncrement: memoPenalty.noIncrement,
+        memoNote: memoPenalty.note,
+        grossApprovedPoints: grossApproved,
         hasDeduction,
         reviewedBy: hodId,
         reviewedAt: new Date().toISOString(),
@@ -681,6 +701,10 @@ router.put(
         meta: {
           hasDeduction,
           additionalPoints: parsed.additionalPoints,
+          grossApproved,
+          memoIssues: parsed.memoIssues,
+          memoDeductionPoints: memoPenalty.deductionPoints,
+          memoNoIncrement: memoPenalty.noIncrement,
           totalApproved,
           incrementPercent,
         },
@@ -691,8 +715,14 @@ router.put(
         message: "Faculty appraisal reviewed successfully",
         data: {
           appraisalId,
+          grossApprovedPoints: grossApproved,
           totalApprovedPoints: totalApproved,
           incrementPercent,
+          memoIssues: parsed.memoIssues,
+          memoDeductionPoints: memoPenalty.deductionPoints,
+          memoHolidaysForfeited: memoPenalty.holidaysForfeited,
+          memoNoIncrement: memoPenalty.noIncrement,
+          memoNote: memoPenalty.note,
           forwardedStatus: "COMMITTEE_REVIEW",
         },
       });

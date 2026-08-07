@@ -455,6 +455,7 @@ export const api = {
         additionalPoints?: number;
         additionalPointsRemark?: string;
         overallRemark?: string;
+        memoIssues?: number;
       },
     ) =>
       unwrap<Record<string, unknown>>(
@@ -491,9 +492,9 @@ export const api = {
       unwrap<Record<string, unknown>>(
         apiClient.put(`/hod/committee/requests/${id}/reject`, { reason }),
       ),
-    // Per-category approval (Academic / Research / Other committee). Approves
-    // only the caller's category; backend auto-forwards to HR once all three
-    // categories are approved.
+    // Per-category approval (Academic / Research / Co-curricular committee —
+    // the last one is the OTHERS enum value). Approves only the caller's
+    // category; backend auto-forwards to HR once all three are approved.
     approveCategory: (
       id: string,
       data: {

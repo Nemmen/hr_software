@@ -18,6 +18,7 @@ import {
   allCategoriesApproved,
   ensureCategoryApprovals,
 } from "../lib/categoryApprovals";
+import { applyMemoPenalty, parseMemoIssues } from "../lib/memoPolicy";
 
 const router: express.Router = express.Router();
 
@@ -939,15 +940,21 @@ router.put(
           select: { points: true },
         });
         const itemTotal = freshItems.reduce((sum, i) => sum + i.points, 0);
-        const totalApproved =
+        // + criterion XIII (HOD Remarks), then the HOD-recorded memo penalty.
+        const grossApproved =
           itemTotal + parseHodAdditionalPoints(appraisal.hodRemarks);
+        const { netPoints: totalApproved, incrementPercent } = applyMemoPenalty(
+          grossApproved,
+          parseMemoIssues(appraisal.hodRemarks),
+          facultyIncrement,
+        );
         await prisma.appraisal.update({
           where: { id: appraisalId },
           data: {
             status: "HR_FINALIZED",
             locked: true,
             finalScore: totalApproved,
-            finalPercent: facultyIncrement(totalApproved),
+            finalPercent: incrementPercent,
           },
         });
         forwardedStatus = "HR_FINALIZED";

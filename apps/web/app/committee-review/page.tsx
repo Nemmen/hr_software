@@ -37,6 +37,14 @@ interface AppraisalForReview {
 
 const ACTIVE_STATUSES = ["COMMITTEE_REVIEW"];
 
+// The OTHERS enum value is displayed as "Co-curricular", so the label can't be
+// derived by capitalising the enum name.
+const CATEGORY_LABEL: Record<string, string> = {
+  ACADEMICS: "Academics",
+  RESEARCH: "Research",
+  OTHERS: "Co-curricular",
+};
+
 function getStatusBadge(status: string) {
   const map: Record<string, { bg: string; text: string; label: string; icon: React.ReactNode }> = {
     COMMITTEE_REVIEW: { bg: "bg-blue-100", text: "text-blue-800", label: "Pending Review", icon: <AlertCircle className="h-3.5 w-3.5" /> },
@@ -138,9 +146,7 @@ function CommitteeDashboardPage() {
               <div className="rounded-lg bg-bg p-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-text-3">
                   {appraisal.callerCategory
-                    ? `${appraisal.callerCategory.charAt(0)}${appraisal.callerCategory
-                        .slice(1)
-                        .toLowerCase()} Points`
+                    ? `${CATEGORY_LABEL[appraisal.callerCategory] ?? appraisal.callerCategory} Points`
                     : "Total Points"}
                 </p>
                 <p className="mt-1 text-sm font-medium text-text">
@@ -157,7 +163,7 @@ function CommitteeDashboardPage() {
                 appraisal.categoryApprovals ?? [
                   { category: "ACADEMICS", label: "Academics", approved: false },
                   { category: "RESEARCH", label: "Research", approved: false },
-                  { category: "OTHERS", label: "Others", approved: false },
+                  { category: "OTHERS", label: "Co-curricular", approved: false },
                 ]
               ).map((c) => (
                 <span

@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-client";
 import { getPrimaryRole } from "@/lib/utils/routing";
+import { memoPenaltyFor } from "@/lib/utils/memoPolicy";
 import { useAuthStore } from "@/store/auth";
 
 type ReviewItem = {
@@ -83,14 +84,18 @@ type ItemState = {
   remark: string;
 };
 
-type ReviewCategory = "Academics" | "Research" | "Others";
+type ReviewCategory = "Academics" | "Research" | "Co-curricular";
 
 type ReviewSection = {
   category: ReviewCategory;
   items: ReviewItem[];
 };
 
-const CATEGORY_ORDER: ReviewCategory[] = ["Academics", "Research", "Others"];
+const CATEGORY_ORDER: ReviewCategory[] = [
+  "Academics",
+  "Research",
+  "Co-curricular",
+];
 
 const CATEGORY_DETAILS: Record<
   ReviewCategory,
@@ -99,17 +104,17 @@ const CATEGORY_DETAILS: Record<
   Academics: {
     title: "Academics",
     description:
-      "Teaching performance, attendance, FDPs, academic activities, and other classroom-focused criteria.",
+      "Average result, conferences and seminars, FDPs/STPs, attendance, overall university result, and student positions in university academics.",
   },
   Research: {
     title: "Research",
     description:
-      "Scopus papers, impact factor, patents, consultancy, thesis guidance, and other research achievements.",
+      "Papers published, journal impact factor, books and book chapters, patents, funded projects and consultancy, and PG thesis guidance.",
   },
-  Others: {
-    title: "Others",
+  "Co-curricular": {
+    title: "Co-curricular",
     description:
-      "Co-curricular activities, awards, recognitions, HOD remarks, and supporting contributions.",
+      "Co-curricular activities, awards and recognition, HOD remarks, fee recovery, awards won outside SVGOI, placement, and memo-issue penalties.",
   },
 };
 
@@ -117,7 +122,7 @@ const CATEGORY_DETAILS: Record<
 const ROLE_TO_CATEGORY: Record<string, ReviewCategory> = {
   COMMITTEE_ACADEMIC: "Academics",
   COMMITTEE_RESEARCH: "Research",
-  COMMITTEE_OTHER: "Others",
+  COMMITTEE_OTHER: "Co-curricular",
 };
 
 const CATEGORY_TO_ENUM: Record<
@@ -126,38 +131,41 @@ const CATEGORY_TO_ENUM: Record<
 > = {
   Academics: "ACADEMICS",
   Research: "RESEARCH",
-  Others: "OTHERS",
+  "Co-curricular": "OTHERS",
 };
 
 const ENUM_TO_CATEGORY: Record<string, ReviewCategory> = {
   ACADEMICS: "Academics",
   RESEARCH: "Research",
-  OTHERS: "Others",
+  OTHERS: "Co-curricular",
 };
 
 const CATEGORY_BY_KEY: Record<string, ReviewCategory> = {
+  // Academics — criteria I, VI, VII, XI, XVI, XVIII
   academics_average_result: "Academics",
+  conference_seminar_workshop: "Academics",
   fdp_stp: "Academics",
+  attendance: "Academics",
   overall_university_result: "Academics",
-  placement: "Academics",
   department_university_positions: "Academics",
+  // Research — criteria II, III, IV, V, VIII, IX
   research_publications: "Research",
   impact_factor: "Research",
   books_published: "Research",
   patents: "Research",
-  conference_seminar_workshop: "Research",
   research_project_consultancy: "Research",
   research_guidance: "Research",
-  co_curricular_activities: "Others",
-  attendance: "Others",
-  awards_recognition: "Others",
-  fee_recovery: "Others",
-  awards_outside_svgoi: "Others",
+  // Co-curricular — criteria X, XII, XIII, XIV, XV, XVII (+ memo penalties)
+  co_curricular_activities: "Co-curricular",
+  awards_recognition: "Co-curricular",
+  fee_recovery: "Co-curricular",
+  awards_outside_svgoi: "Co-curricular",
+  placement: "Co-curricular",
   // Legacy criterion-key aliases (must match apps/api lib/appraisalCategories.ts).
   scopus_papers: "Research",
   book_chapter_book_patent: "Research",
-  conference_seminar_symposia: "Research",
-  hod_remarks_score: "Others",
+  conference_seminar_symposia: "Academics",
+  hod_remarks_score: "Co-curricular",
 };
 
 const CRITERION_ORDER = [
@@ -197,18 +205,18 @@ const HEADING_ROMAN_TO_CATEGORY: Record<string, ReviewCategory> = {
   III: "Research",
   IV: "Research",
   V: "Research",
-  VI: "Research",
+  VI: "Academics",
   VII: "Academics",
   VIII: "Research",
   IX: "Research",
-  X: "Others",
-  XI: "Others",
-  XII: "Others",
-  XIII: "Others",
-  XIV: "Others",
-  XV: "Others",
+  X: "Co-curricular",
+  XI: "Academics",
+  XII: "Co-curricular",
+  XIII: "Co-curricular",
+  XIV: "Co-curricular",
+  XV: "Co-curricular",
   XVI: "Academics",
-  XVII: "Academics",
+  XVII: "Co-curricular",
   XVIII: "Academics",
 };
 
@@ -241,7 +249,7 @@ function getReviewCategory(item: ReviewItem): ReviewCategory {
     if (fromRoman) return fromRoman;
   }
 
-  return "Others";
+  return "Co-curricular";
 }
 
 function buildItemPayload(
@@ -304,6 +312,7 @@ function CommitteeReviewPage() {
   const [hodAdditionalPoints, setHodAdditionalPoints] = useState(0);
   const [hodAdditionalPointsRemark, setHodAdditionalPointsRemark] = useState("");
   const [hodOverallRemark, setHodOverallRemark] = useState("");
+  const [memoIssues, setMemoIssues] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -396,6 +405,9 @@ function CommitteeReviewPage() {
           }
           if (typeof hodRemarksData?.overallRemark === "string") {
             setHodOverallRemark(hodRemarksData.overallRemark);
+          }
+          if (typeof hodRemarksData?.memoIssues === "number") {
+            setMemoIssues(hodRemarksData.memoIssues);
           }
         } catch {
           // non-fatal
@@ -510,6 +522,14 @@ function CommitteeReviewPage() {
       : items;
   }, [appraisal, callerCategory]);
 
+  // Criterion XIII (HOD's Remarks) has no AppraisalItem of its own — it is the
+  // HOD's 0–4 additionalPoints and belongs to the Co-curricular category, so
+  // only that committee counts it toward its own total. Memo penalties are
+  // likewise reviewed by Co-curricular but deduct from the appraisal total.
+  const ownsHodRemarks = !callerCategory || callerCategory === "Co-curricular";
+  const hodRemarksPoints = isHodAppraisal ? remarksScore : hodAdditionalPoints;
+  const memoPenalty = useMemo(() => memoPenaltyFor(memoIssues), [memoIssues]);
+
   const scopedApprovedPoints = useMemo(
     () =>
       scopedItems.reduce(
@@ -517,8 +537,8 @@ function CommitteeReviewPage() {
           sum +
           Number(itemState[item.id]?.approvedPoints ?? item.hodApprovedPoints),
         0,
-      ),
-    [scopedItems, itemState],
+      ) + (ownsHodRemarks ? hodRemarksPoints : 0),
+    [scopedItems, itemState, ownsHodRemarks, hodRemarksPoints],
   );
 
   const myCategoryApproved = useMemo(
@@ -809,11 +829,11 @@ function CommitteeReviewPage() {
           </p>
           <p className="mt-2 text-2xl font-bold text-text">
             {scopedItems.reduce((sum, item) => sum + item.hodApprovedPoints, 0) +
-              (!callerCategory && !isHodAppraisal ? hodAdditionalPoints : 0)}
+              (ownsHodRemarks && !isHodAppraisal ? hodAdditionalPoints : 0)}
           </p>
-          {!callerCategory && !isHodAppraisal && hodAdditionalPoints > 0 && (
+          {ownsHodRemarks && !isHodAppraisal && hodAdditionalPoints > 0 && (
             <p className="mt-0.5 text-xs text-text-3">
-              incl. {hodAdditionalPoints} remarks score
+              incl. {hodAdditionalPoints} remarks score (XIII)
             </p>
           )}
         </div>
@@ -1080,10 +1100,18 @@ function CommitteeReviewPage() {
         </section>
       ) : null}
 
-      {/* HOD remarks info panel — faculty appraisals only */}
+      {/* HOD remarks info panel — faculty appraisals only. The score itself is
+          criterion XIII and counts toward the Co-curricular category. */}
       {!isHodAppraisal && (hodAdditionalPoints > 0 || hodOverallRemark) && (
         <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-          <h3 className="font-display text-base font-semibold text-text">HOD&apos;s Remarks</h3>
+          <h3 className="font-display text-base font-semibold text-text">
+            XIII. HOD&apos;s Remarks
+          </h3>
+          {ownsHodRemarks && (
+            <p className="mt-1 text-sm text-text-2">
+              Counts toward the Co-curricular category total.
+            </p>
+          )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg bg-bg p-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-text-3">HOD&apos;s Remarks Score</p>
@@ -1099,6 +1127,56 @@ function CommitteeReviewPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Memo issues — recorded by the HOD, reviewed by the Co-curricular
+          committee. Deducts from the appraisal total, not from any criterion. */}
+      {ownsHodRemarks && (
+        <div
+          className={`mt-6 rounded-2xl border p-5 shadow-sm ${
+            memoPenalty.note
+              ? "border-danger/30 bg-danger-bg"
+              : "border-border bg-surface"
+          }`}
+        >
+          <h3 className="font-display text-base font-semibold text-text">
+            Memo Issues
+          </h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-bg p-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                Memos Issued
+              </p>
+              <p className="mt-1 text-lg font-bold text-text">{memoIssues}</p>
+            </div>
+            <div className="rounded-lg bg-bg p-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-text-3">
+                Penalty Applied
+              </p>
+              {memoPenalty.note ? (
+                <>
+                  <p
+                    className={`mt-1 text-lg font-bold ${
+                      memoPenalty.noIncrement ? "text-danger" : "text-text"
+                    }`}
+                  >
+                    {memoPenalty.noIncrement
+                      ? "No increment"
+                      : `−${memoPenalty.deductionPoints} points`}
+                  </p>
+                  <p className="mt-1 text-sm text-text-2">{memoPenalty.note}</p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-text-2">No penalty</p>
+              )}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-text-3">
+            Recorded by the HOD during review. The deduction is applied to the
+            appraisal total when the final increment is calculated, not to any
+            individual criterion.
+          </p>
         </div>
       )}
 
