@@ -959,6 +959,62 @@ router.get(
   },
 );
 
+// Department.hodId is only the data link. What login, getPrimaryRole() and every
+// requireRoles("HOD") gate actually read is the HOD row in UserRole, so both have
+// to move together — otherwise a newly assigned HOD logs in with no rights and the
+// replaced one keeps reviewing after being swapped out.
+// Returns which users changed so the caller can audit-log after the tx commits.
+async function syncHodRoleAssignment(
+  tx: Prisma.TransactionClient,
+  previousHodId: string | null,
+  nextHodId: string | null,
+): Promise<{ granted: string | null; revoked: string | null }> {
+  if (previousHodId === nextHodId) return { granted: null, revoked: null };
+
+  let revoked: string | null = null;
+  if (previousHodId) {
+    // Runs after the department row is written, so this no longer sees the
+    // department they were just removed from.
+    const stillHodElsewhere = await tx.department.findFirst({
+      where: { hodId: previousHodId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!stillHodElsewhere) {
+      await tx.userRole.deleteMany({
+        where: { userId: previousHodId, role: "HOD" },
+      });
+      revoked = previousHodId;
+
+      // Existing HODs often carry the HOD role and nothing else. Dropping them to
+      // zero roles would land them on the employee dashboard, so fall back to
+      // FACULTY — the role they need to file their own appraisal anyway.
+      const remainingRoles = await tx.userRole.count({
+        where: { userId: previousHodId },
+      });
+      if (remainingRoles === 0) {
+        await tx.userRole.create({
+          data: { userId: previousHodId, role: "FACULTY" },
+        });
+      }
+    }
+  }
+
+  let granted: string | null = null;
+  if (nextHodId) {
+    const alreadyHod = await tx.userRole.findFirst({
+      where: { userId: nextHodId, role: "HOD" },
+      select: { id: true },
+    });
+    if (!alreadyHod) {
+      await tx.userRole.create({ data: { userId: nextHodId, role: "HOD" } });
+      granted = nextHodId;
+    }
+  }
+
+  return { granted, revoked };
+}
+
 const createDepartmentSchema = z.object({
   name: z.string().min(1),
   code: z.string().optional(),
@@ -1028,36 +1084,38 @@ router.post(
 
         resolvedHodId = newHod.id;
 
-        await Promise.all([
-          prisma.userRole.create({
-            data: { userId: newHod.id, role: "HOD" },
-          }),
-          writeAuditLog({
-            actorId: req.auth?.sub || "",
-            action: "hr.hod.created",
-            resource: "User",
-            resourceId: newHod.id,
-            meta: { email: input.hod.email, department: input.name },
-          }),
-        ]);
+        // The HOD role itself is granted by syncHodRoleAssignment below, so both
+        // the new-user and existing-user paths go through one code path.
+        await writeAuditLog({
+          actorId: req.auth?.sub || "",
+          action: "hr.hod.created",
+          resource: "User",
+          resourceId: newHod.id,
+          meta: { email: input.hod.email, department: input.name },
+        });
       }
 
-      const department = await prisma.department.create({
-        data: {
-          name: input.name,
-          code: input.code,
-          hodId: resolvedHodId,
-          ...(resolvedHodId
-            ? { users: { connect: { id: resolvedHodId } } }
-            : {}),
-        },
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          hodId: true,
-          hod: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
+      const { department, roleChange } = await prisma.$transaction(async (tx) => {
+        const created = await tx.department.create({
+          data: {
+            name: input.name,
+            code: input.code,
+            hodId: resolvedHodId,
+            ...(resolvedHodId
+              ? { users: { connect: { id: resolvedHodId } } }
+              : {}),
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            hodId: true,
+            hod: { select: { id: true, firstName: true, lastName: true, email: true } },
+          },
+        });
+
+        const roleChange = await syncHodRoleAssignment(tx, null, resolvedHodId);
+        return { department: created, roleChange };
       });
 
       await writeAuditLog({
@@ -1067,6 +1125,16 @@ router.post(
         resourceId: department.id,
         meta: { name: department.name },
       });
+
+      if (roleChange.granted) {
+        await writeAuditLog({
+          actorId: req.auth?.sub || "",
+          action: "hr.hod.role_granted",
+          resource: "UserRole",
+          resourceId: roleChange.granted,
+          meta: { department: department.name },
+        });
+      }
 
       res.status(201).json({ success: true, message: "Department created", data: department });
     } catch (error) {
@@ -1090,6 +1158,16 @@ router.put(
       const { deptId } = req.params;
       const input = updateDepartmentSchema.parse(req.body ?? {});
 
+      // Needed to know whose HOD role to revoke when the assignment moves.
+      const current = await prisma.department.findUnique({
+        where: { id: deptId },
+        select: { hodId: true },
+      });
+      if (!current) {
+        res.status(404).json({ success: false, message: "Department not found" });
+        return;
+      }
+
       // If changing HOD, ensure no other dept has them
       if (input.hodId) {
         const existing = await prisma.department.findFirst({
@@ -1104,14 +1182,23 @@ router.put(
         }
       }
 
-      const department = await prisma.department.update({
-        where: { id: deptId },
-        data: {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.code !== undefined ? { code: input.code } : {}),
-          ...("hodId" in input ? { hodId: input.hodId ?? null } : {}),
-        },
-        select: { id: true, name: true, code: true, hodId: true },
+      const { department, roleChange } = await prisma.$transaction(async (tx) => {
+        const updated = await tx.department.update({
+          where: { id: deptId },
+          data: {
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.code !== undefined ? { code: input.code } : {}),
+            ...("hodId" in input ? { hodId: input.hodId ?? null } : {}),
+          },
+          select: { id: true, name: true, code: true, hodId: true },
+        });
+
+        const roleChange =
+          "hodId" in input
+            ? await syncHodRoleAssignment(tx, current.hodId, input.hodId ?? null)
+            : { granted: null, revoked: null };
+
+        return { department: updated, roleChange };
       });
 
       await writeAuditLog({
@@ -1121,6 +1208,25 @@ router.put(
         resourceId: deptId,
         meta: { name: department.name },
       });
+
+      if (roleChange.revoked) {
+        await writeAuditLog({
+          actorId: req.auth?.sub || "",
+          action: "hr.hod.role_revoked",
+          resource: "UserRole",
+          resourceId: roleChange.revoked,
+          meta: { department: department.name },
+        });
+      }
+      if (roleChange.granted) {
+        await writeAuditLog({
+          actorId: req.auth?.sub || "",
+          action: "hr.hod.role_granted",
+          resource: "UserRole",
+          resourceId: roleChange.granted,
+          meta: { department: department.name },
+        });
+      }
 
       res.json({ success: true, message: "Department updated", data: department });
     } catch (error) {
