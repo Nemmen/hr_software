@@ -280,7 +280,7 @@ const baseCriteria: PolicyCriterion[] = [
       },
       {
         value: "more_than_one_award",
-        label: "More than 1 above Awards",
+        label: "More than one Award in State or National",
         points: 4,
       },
     ],
